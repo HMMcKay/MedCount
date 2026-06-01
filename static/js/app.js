@@ -1,4 +1,4 @@
-import { getMedications, getMedication, saveMedication, deleteMedication, getLastTakeDose, getSetting, setSetting } from './db.js';
+import { getMedications, getMedication, saveMedication, deleteMedication, getLastTakeDose, getDosesForMedication, getSetting, setSetting } from './db.js';
 import { setupEncryption, unlockWithPin } from './crypto.js';
 import { recordTake, recordAddOne, recordRefill, getHistory, exportAllData, importData, printHistory } from './history.js';
 import { initReminders, stopReminders, requestNotificationPermission, notificationsGranted, checkAndFireReminders } from './reminders.js';
@@ -12,6 +12,7 @@ let editingId    = null;   // null = adding
 let swReg        = null;
 let _pendingDeleteId = null;
 let _doseReminderCount = 0; // tracks current reminder time entries in form
+let _historyMedId    = null;
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const CAT_COLORS = {
@@ -248,7 +249,7 @@ function attachCardEvents(el) {
       item.addEventListener('click', () => {
         const action = item.dataset.action;
         if (action === 'edit')    openMedDialog(medId);
-        if (action === 'history') openHistoryDialog(medId);
+        if (action === 'history') openHistoryPage(medId);
         if (action === 'refill')  openRefillDialog(medId);
         if (action === 'delete')  openDeleteDialog(medId);
       });
@@ -387,9 +388,11 @@ function populateMedForm(med) {
   set('fill-date',    med.fillDate);
   set('refill-date',  med.refillDate);
   set('expiry-date',  med.expirationDate);
-  set('prescriber',   med.prescriber);
-  set('pharmacy',     med.pharmacy);
-  set('rx',           med.rxNumber);
+  set('prescriber',        med.prescriber);
+  set('prescriber-phone',  med.prescriberPhone);
+  set('pharmacy',          med.pharmacy);
+  set('pharmacy-phone',    med.pharmacyPhone);
+  set('rx',                med.rxNumber);
   set('sig',          med.sig);
   set('notes',        med.notes);
   set('refill-alert', med.reminders?.refillAlertDays ?? 7);
@@ -437,7 +440,9 @@ async function saveMedHandler() {
     refillDate:       get('refill-date') || null,
     expirationDate:   get('expiry-date') || null,
     prescriber:       get('prescriber'),
+    prescriberPhone:  get('prescriber-phone'),
     pharmacy:         get('pharmacy'),
+    pharmacyPhone:    get('pharmacy-phone'),
     rxNumber:         get('rx'),
     sig:              get('sig'),
     notes:            get('notes'),
@@ -538,36 +543,203 @@ async function openRefillDialog(medId) {
   showToast(`${med.name} refilled — ${newQty} ${med.unit || 'pills'}`);
 }
 
-// ── History dialog ────────────────────────────────────────────────────────────
-async function openHistoryDialog(medId) {
+// ── History page ──────────────────────────────────────────────────────────────
+
+async function openHistoryPage(medId) {
+  _historyMedId = medId;
   const med = medications.find(m => m.id === medId);
   if (!med) return;
 
-  const dialog  = document.getElementById('history-dialog');
-  document.getElementById('history-title').textContent = med.name;
+  document.getElementById('hist-page-title').textContent = med.name;
+  document.getElementById('hist-page-sub').textContent =
+    [med.strength, med.form, med.category].filter(Boolean).join(' · ');
 
-  const doses   = await getHistory(medId, { limit: 100 });
-  const tbody   = document.getElementById('history-tbody');
+  hideElement('app');
+  showElement('history-page');
 
+  const doses = await getDosesForMedication(medId, 500);
+
+  document.getElementById('hist-adherence-card').innerHTML = buildAdherenceHTML(med, doses);
+
+  const listEl = document.getElementById('hist-dose-list');
   if (doses.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" class="empty-cell">No history recorded yet</td></tr>';
+    listEl.innerHTML = '<p class="hist-empty">No doses logged yet. Tap Take on the medication card to start tracking.</p>';
   } else {
-    tbody.innerHTML = doses.map(d => {
-      const dt     = new Date(d.timestamp);
-      const label  = { take: 'Took dose', add: 'Added back', refill: 'Refill', edit: 'Edited' }[d.action] ?? d.action;
-      const delta  = d.quantityAfter - d.quantityBefore;
-      return `<tr>
-        <td>${dt.toLocaleDateString()} ${dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-        <td>${label}</td>
-        <td class="${delta < 0 ? 'neg' : 'pos'}">${delta > 0 ? '+' : ''}${delta}</td>
-        <td>${d.quantityAfter}</td>
-      </tr>`;
-    }).join('');
+    listEl.innerHTML = doses.map(d => buildDoseCardHTML(med, d, doses)).join('');
+    listEl.querySelectorAll('.dose-card-header').forEach(header => {
+      header.addEventListener('click', () => {
+        header.closest('.dose-card').classList.toggle('dose-card--open');
+      });
+    });
   }
 
-  document.getElementById('btn-history-print').onclick  = () => printHistory(medId, med.name);
-  document.getElementById('btn-history-export').onclick = () => exportAllData();
-  dialog.show();
+  document.getElementById('btn-hist-print').onclick  = () => printHistory(medId, med.name);
+  document.getElementById('btn-hist-export').onclick = () => exportAllData();
+}
+
+function closeHistoryPage() {
+  hideElement('history-page');
+  showElement('app');
+  _historyMedId = null;
+}
+
+function buildAdherenceHTML(med, doses) {
+  const takeDoses  = doses.filter(d => d.action === 'take');
+  const takenCount = takeDoses.length;
+  const fillQty    = med.fillQuantity ?? med.quantity ?? 0;
+  const curQty     = med.quantity ?? 0;
+  const consumed   = fillQty - curQty;
+
+  if (!med.fillDate) {
+    return `<div class="hist-adherence">
+      <div class="hist-adh-row"><span>Doses logged:</span><strong>${takenCount}</strong></div>
+      <div class="hist-adh-row"><span>Currently remaining:</span><strong>${curQty} ${esc(med.unit || 'pills')}</strong></div>
+    </div>`;
+  }
+
+  const fillDate  = new Date(med.fillDate + 'T12:00:00');
+  const daysSince = Math.max(0, Math.floor((new Date() - fillDate) / 86_400_000));
+  const dpd       = estimateDosesPerDay(med);
+  const expected  = Math.round(daysSince * dpd);
+  const pct       = expected > 0 ? Math.min(100, Math.round((takenCount / expected) * 100)) : null;
+  const pctColor  = pct == null ? '#006B5E' : pct >= 80 ? '#386A1F' : pct >= 60 ? '#C25B00' : '#B3261E';
+
+  return `
+  <div class="hist-adherence">
+    <div class="hist-adh-row"><span>Fill date:</span><strong>${formatDate(med.fillDate)}</strong></div>
+    <div class="hist-adh-row"><span>Starting quantity:</span><strong>${fillQty} ${esc(med.unit || 'pills')}</strong></div>
+    <div class="hist-adh-row"><span>Currently remaining:</span><strong>${curQty} ${esc(med.unit || 'pills')}</strong></div>
+    <div class="hist-adh-row"><span>Consumed:</span><strong>${consumed >= 0 ? consumed : '—'} ${esc(med.unit || 'pills')}</strong></div>
+    ${expected > 0 ? `
+    <div class="hist-adh-divider"></div>
+    <div class="hist-adh-row"><span>Expected doses by now:</span><strong>${expected}</strong></div>
+    <div class="hist-adh-row"><span>Doses taken:</span><strong>${takenCount}</strong></div>
+    ${pct != null ? `
+    <div class="hist-adh-bar-wrap">
+      <div class="hist-adh-bar" style="width:${pct}%;background:${pctColor}"></div>
+    </div>
+    <div class="hist-adh-pct" style="color:${pctColor}">${pct}% adherence</div>` : ''}` : ''}
+  </div>`;
+}
+
+function estimateDosesPerDay(med) {
+  if (med.reminders?.doseAlerts?.length) {
+    return med.reminders.doseAlerts.reduce((s, a) => s + (a.days?.length ?? 7) / 7, 0);
+  }
+  const sig = (med.sig || '').toLowerCase();
+  if (sig.includes('four') || sig.includes('qid'))  return 4;
+  if (sig.includes('three') || sig.includes('tid')) return 3;
+  if (sig.includes('twice') || sig.includes('bid')) return 2;
+  if (sig.includes('weekly'))                        return 1 / 7;
+  if (sig.includes('every other'))                   return 0.5;
+  if (med.daysSupply && med.fillQuantity && med.quantityPerDose) {
+    const qpd = med.fillQuantity / med.daysSupply / med.quantityPerDose;
+    if (qpd > 0 && qpd <= 6) return qpd;
+  }
+  return 1;
+}
+
+const FREQ_OPTIONS = ['Once daily','Twice daily','Three times daily','Four times daily',
+  'Every other day','Weekly','As needed (PRN)','Other'];
+
+function buildDoseCardHTML(med, dose, allDoses) {
+  const dt       = new Date(dose.timestamp);
+  const delta    = dose.quantityAfter - dose.quantityBefore;
+  const isPos    = delta >= 0;
+  const deltaStr = `${isPos ? '+' : ''}${delta}`;
+  const dColor   = isPos ? '#386A1F' : '#B3261E';
+  const actLabel = { take: 'Took dose', add: 'Added back', refill: 'Refill', edit: 'Edited' }[dose.action] ?? dose.action;
+
+  return `
+  <div class="dose-card" role="listitem">
+    <div class="dose-card-header">
+      <div class="dose-indicators">
+        <span class="dose-delta" style="color:${dColor}">${esc(deltaStr)}</span>
+        <span class="dose-remaining">${dose.quantityAfter}</span>
+      </div>
+      <div class="dose-info-col">
+        <span class="dose-primary">${esc(actLabel)}&thinsp;·&thinsp;${esc(med.name)}</span>
+        <span class="dose-secondary">${dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}&thinsp;·&thinsp;${dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+        ${(med.strength || med.form) ? `<span class="dose-tertiary">${[esc(med.strength), esc(med.form)].filter(Boolean).join(' · ')}</span>` : ''}
+      </div>
+      <md-icon class="dose-chevron">expand_more</md-icon>
+    </div>
+    <div class="dose-card-body">
+      ${buildExpandedBody(med, dose, deltaStr, dColor, allDoses)}
+    </div>
+  </div>`;
+}
+
+function buildExpandedBody(med, dose, deltaStr, dColor, allDoses) {
+  const dt = new Date(dose.timestamp);
+  const sigLower = (med.sig || '').toLowerCase();
+
+  const histItems = allDoses.slice(0, 60).map(d => {
+    const ddt    = new Date(d.timestamp);
+    const ddelta = d.quantityAfter - d.quantityBefore;
+    const dPos   = ddelta >= 0;
+    return `<div class="hist-mini-row${d.id === dose.id ? ' hist-mini-current' : ''}">
+      <span class="hist-mini-delta" style="color:${dPos ? '#386A1F' : '#B3261E'}">${dPos ? '+' : ''}${ddelta}</span>
+      <span class="hist-mini-remaining">${d.quantityAfter}</span>
+      <span class="hist-mini-label">${esc({ take: 'Took', add: 'Added', refill: 'Refill', edit: 'Edit' }[d.action] ?? d.action)}</span>
+      <span class="hist-mini-time">${ddt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${ddt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+    </div>`;
+  }).join('');
+
+  return `
+  <div class="dose-exp-grid">
+
+    <div class="dose-exp-section">
+      <h4 class="dose-exp-title">Medication Details</h4>
+      ${expRow('Name', med.name)}
+      ${expRow('Date Filled', formatDate(med.fillDate))}
+      ${expRow('Original Qty', med.fillQuantity != null ? `${med.fillQuantity} ${med.unit || 'pills'}` : null)}
+      <div class="exp-row">
+        <span class="exp-lbl">Dosage</span>
+        <div class="exp-dosage">
+          <input type="number" class="exp-num" value="${med.quantityPerDose ?? 1}" min="1" readonly>
+          <select class="exp-freq" disabled>
+            ${FREQ_OPTIONS.map(f => `<option ${sigLower.includes(f.split(' ')[0].toLowerCase()) ? 'selected' : ''}>${esc(f)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      ${expRow('Prescription #', med.rxNumber)}
+      ${expRow('Pharmacy', med.pharmacy)}
+      ${expRow('Pharmacy Phone', med.pharmacyPhone)}
+      ${expRow('Physician', med.prescriber)}
+      ${expRow('Physician Phone', med.prescriberPhone)}
+    </div>
+
+    <div class="dose-exp-section">
+      <h4 class="dose-exp-title">This Record</h4>
+      ${expRow('Created', dt.toLocaleString())}
+      <div class="exp-row">
+        <span class="exp-lbl">Change</span>
+        <span class="exp-val" style="color:${dColor};font-weight:700;font-size:20px;line-height:1">${esc(deltaStr)}</span>
+      </div>
+      ${expRow('Quantity after', String(dose.quantityAfter))}
+      ${dose.note ? expRow('Note', dose.note) : ''}
+    </div>
+
+    <div class="dose-exp-section">
+      <h4 class="dose-exp-title">Adherence Comparison</h4>
+      ${buildAdherenceHTML(med, allDoses)}
+    </div>
+
+    <div class="dose-exp-section dose-exp-full-hist">
+      <h4 class="dose-exp-title">All History&ensp;<span class="dose-hist-count">${allDoses.length > 60 ? `latest 60 of ${allDoses.length}` : `${allDoses.length} entries`}</span></h4>
+      <div class="hist-mini-list">${histItems || '<p style="color:var(--md-sys-color-on-surface-variant);font-size:13px;margin:0">No entries</p>'}</div>
+    </div>
+
+  </div>`;
+}
+
+function expRow(label, value) {
+  if (value == null || value === '') return '';
+  return `<div class="exp-row">
+    <span class="exp-lbl">${esc(label)}</span>
+    <span class="exp-val">${esc(String(value))}</span>
+  </div>`;
 }
 
 // ── Delete dialog ─────────────────────────────────────────────────────────────
@@ -788,10 +960,8 @@ function bindEvents() {
     document.getElementById('tracking-options').hidden = !e.target.selected;
   });
 
-  // History dialog
-  document.getElementById('btn-history-close').addEventListener('click', () => {
-    document.getElementById('history-dialog').close();
-  });
+  // History page
+  document.getElementById('btn-hist-back').addEventListener('click', closeHistoryPage);
 
   // Delete dialog
   document.getElementById('btn-delete-confirm').addEventListener('click', confirmDelete);

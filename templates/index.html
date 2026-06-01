@@ -98,6 +98,33 @@
 
 
 <!-- ────────────────────────────────────────────────────────────────────────────
+     HISTORY PAGE
+──────────────────────────────────────────────────────────────────────────────── -->
+<div id="history-page" hidden>
+
+  <header class="hist-header">
+    <md-icon-button id="btn-hist-back" aria-label="Back to medications">
+      <md-icon>arrow_back</md-icon>
+    </md-icon-button>
+    <div class="hist-header-text">
+      <h1 id="hist-page-title" class="hist-page-title"></h1>
+      <p id="hist-page-sub" class="hist-page-sub"></p>
+    </div>
+    <md-icon-button id="btn-hist-print" aria-label="Print history">
+      <md-icon>print</md-icon>
+    </md-icon-button>
+    <md-icon-button id="btn-hist-export" aria-label="Export data">
+      <md-icon>download</md-icon>
+    </md-icon-button>
+  </header>
+
+  <div id="hist-adherence-card" class="hist-adherence-wrap"></div>
+  <div id="hist-dose-list" class="hist-dose-list" role="list" style="padding-bottom:40px"></div>
+
+</div><!-- /#history-page -->
+
+
+<!-- ────────────────────────────────────────────────────────────────────────────
      ADD / EDIT MEDICATION DIALOG
 ──────────────────────────────────────────────────────────────────────────────── -->
 <md-dialog id="med-dialog" aria-labelledby="med-dialog-headline">
@@ -189,10 +216,14 @@
             <md-outlined-text-field id="field-prescriber" label="Prescriber" autocomplete="off"></md-outlined-text-field>
             <ul id="prescriber-suggestions" class="ac-list" hidden></ul>
           </div>
+          <md-outlined-text-field id="field-prescriber-phone" label="Physician phone" type="tel" style="flex:1"></md-outlined-text-field>
+        </div>
+        <div class="form-row-2">
           <div class="ac-wrapper" style="flex:1">
             <md-outlined-text-field id="field-pharmacy" label="Pharmacy" autocomplete="off"></md-outlined-text-field>
             <ul id="pharmacy-suggestions" class="ac-list" hidden></ul>
           </div>
+          <md-outlined-text-field id="field-pharmacy-phone" label="Pharmacy phone" type="tel" style="flex:1"></md-outlined-text-field>
         </div>
         <md-outlined-text-field id="field-rx" label="Prescription # (Rx)"></md-outlined-text-field>
         <md-outlined-text-field id="field-sig" label="Instructions / SIG" type="textarea" rows="2"></md-outlined-text-field>
@@ -268,45 +299,6 @@
       <md-icon slot="icon">save</md-icon>
       Save
     </md-filled-button>
-  </div>
-</md-dialog>
-
-
-<!-- ────────────────────────────────────────────────────────────────────────────
-     DOSE HISTORY DIALOG
-──────────────────────────────────────────────────────────────────────────────── -->
-<md-dialog id="history-dialog">
-  <span slot="headline">
-    <md-icon style="vertical-align:middle;margin-right:8px">history</md-icon>
-    <span id="history-title">History</span>
-  </span>
-
-  <div slot="content" style="min-width:280px">
-    <div style="overflow-x:auto">
-      <table class="history-table">
-        <thead>
-          <tr>
-            <th>Date &amp; Time</th>
-            <th>Action</th>
-            <th>Change</th>
-            <th>Remaining</th>
-          </tr>
-        </thead>
-        <tbody id="history-tbody"></tbody>
-      </table>
-    </div>
-  </div>
-
-  <div slot="actions">
-    <md-text-button id="btn-history-print">
-      <md-icon slot="icon">print</md-icon>
-      Print
-    </md-text-button>
-    <md-text-button id="btn-history-export">
-      <md-icon slot="icon">download</md-icon>
-      Export all
-    </md-text-button>
-    <md-filled-button id="btn-history-close">Close</md-filled-button>
   </div>
 </md-dialog>
 

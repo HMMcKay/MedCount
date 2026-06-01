@@ -665,3 +665,359 @@ details[open] .details-content {
 /* ── Safe area insets (notch phones) ─────────────────────────────────────────── */
 .med-grid     { padding-bottom: max(96px, calc(80px + env(safe-area-inset-bottom))); }
 .fab-container { bottom: max(24px, calc(16px + env(safe-area-inset-bottom))); }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   HISTORY PAGE
+═══════════════════════════════════════════════════════════════════════════════ */
+
+#history-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  background: var(--md-sys-color-background);
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────────── */
+.hist-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  height: 64px;
+  background: var(--md-sys-color-surface-container-low);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.hist-header-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.hist-page-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--md-sys-color-on-surface);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hist-page-sub {
+  margin: 0;
+  font-size: 12px;
+  color: var(--md-sys-color-on-surface-variant);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Adherence summary ───────────────────────────────────────────────────────── */
+.hist-adherence-wrap {
+  padding: 12px 12px 4px;
+}
+
+.hist-adherence {
+  background: var(--md-sys-color-surface-container);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hist-adh-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 14px;
+  color: var(--md-sys-color-on-surface-variant);
+  gap: 12px;
+}
+.hist-adh-row strong {
+  color: var(--md-sys-color-on-surface);
+  font-weight: 600;
+  text-align: right;
+}
+
+.hist-adh-divider {
+  height: 1px;
+  background: var(--md-sys-color-outline-variant);
+  margin: 4px 0;
+}
+
+.hist-adh-bar-wrap {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--md-sys-color-outline-variant);
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.hist-adh-bar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width .5s ease;
+  min-width: 4px;
+}
+
+.hist-adh-pct {
+  font-size: 13px;
+  font-weight: 600;
+  text-align: right;
+  margin-top: 4px;
+}
+
+/* ── Dose list ───────────────────────────────────────────────────────────────── */
+.hist-dose-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 12px 40px;
+}
+
+.hist-empty {
+  text-align: center;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 14px;
+  padding: 40px 16px;
+  line-height: 1.6;
+}
+
+/* ── Dose card (compact + expandable) ────────────────────────────────────────── */
+.dose-card {
+  background: var(--md-sys-color-surface-container);
+  border-radius: 16px;
+  overflow: hidden;
+  transition: box-shadow .15s;
+}
+.dose-card:hover { box-shadow: 0 2px 6px rgba(0,0,0,.15); }
+.dose-card--open { box-shadow: 0 3px 10px rgba(0,0,0,.18); }
+
+/* Compact header row */
+.dose-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background .1s;
+}
+.dose-card-header:active { background: var(--md-sys-color-surface-container-high); }
+
+/* Left indicator column: delta + remaining */
+.dose-indicators {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  min-width: 44px;
+  text-align: center;
+}
+
+.dose-delta {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.dose-remaining {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0061A4;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  line-height: 1;
+}
+
+/* Text content */
+.dose-info-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dose-primary {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--md-sys-color-on-surface);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dose-secondary {
+  font-size: 12px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.dose-tertiary {
+  font-size: 11px;
+  color: var(--md-sys-color-on-surface-variant);
+  opacity: .75;
+}
+
+/* Expand/collapse chevron */
+.dose-chevron {
+  flex-shrink: 0;
+  font-size: 20px;
+  color: var(--md-sys-color-on-surface-variant);
+  transition: transform .2s;
+  font-family: 'Material Symbols Outlined';
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+}
+.dose-card--open .dose-chevron { transform: rotate(180deg); }
+
+/* Expanded body */
+.dose-card-body {
+  display: none;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+.dose-card--open .dose-card-body { display: block; }
+
+/* ── Expanded content grid ───────────────────────────────────────────────────── */
+.dose-exp-grid {
+  display: flex;
+  flex-direction: column;
+}
+
+.dose-exp-section {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+.dose-exp-section:last-child { border-bottom: none; }
+
+.dose-exp-title {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  color: var(--md-sys-color-primary);
+}
+
+/* ── Individual field rows ───────────────────────────────────────────────────── */
+.exp-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  font-size: 14px;
+}
+.exp-row:last-child { border-bottom: none; }
+
+.exp-lbl {
+  color: var(--md-sys-color-on-surface-variant);
+  white-space: nowrap;
+  flex-shrink: 0;
+  padding-top: 1px;
+}
+
+.exp-val {
+  color: var(--md-sys-color-on-surface);
+  text-align: right;
+  word-break: break-word;
+}
+
+/* Dosage display row */
+.exp-dosage {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.exp-num {
+  width: 52px;
+  padding: 4px 6px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 8px;
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+  font-family: inherit;
+  font-size: 14px;
+  text-align: center;
+}
+
+.exp-freq {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 8px;
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: default;
+}
+
+/* ── Mini history list (inside expanded card) ────────────────────────────────── */
+.dose-hist-count {
+  font-size: 10px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.hist-mini-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 240px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--md-sys-color-outline-variant) transparent;
+}
+
+.hist-mini-row {
+  display: grid;
+  grid-template-columns: 36px 44px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+.hist-mini-row:hover { background: var(--md-sys-color-surface-container-high); }
+
+.hist-mini-current {
+  background: var(--md-sys-color-secondary-container);
+  border-radius: 8px;
+}
+
+.hist-mini-delta {
+  font-weight: 700;
+  text-align: right;
+}
+
+.hist-mini-remaining {
+  font-weight: 700;
+  color: #0061A4;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-align: center;
+}
+
+.hist-mini-label {
+  color: var(--md-sys-color-on-surface);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hist-mini-time {
+  color: var(--md-sys-color-on-surface-variant);
+  text-align: right;
+  white-space: nowrap;
+}
