@@ -1,20 +1,28 @@
-import { getMedications, getMedication, saveMedication, deleteMedication, getLastTakeDose, getDosesForMedication, getSetting, setSetting } from './db.js';
+import { getMedications, getMedication, saveMedication, deleteMedication,
+         getLastTakeDose, getDosesForMedication, getSetting, setSetting } from './db.js';
 import { setupEncryption, unlockWithPin } from './crypto.js';
-import { recordTake, recordAddOne, recordRefill, getHistory, exportAllData, importData, printHistory } from './history.js';
-import { initReminders, stopReminders, requestNotificationPermission, notificationsGranted, checkAndFireReminders } from './reminders.js';
+import { recordTake, recordAddOne, recordRefill, getHistory,
+         exportAllData, importData, printHistory } from './history.js';
+import { initReminders, stopReminders, requestNotificationPermission,
+         notificationsGranted, checkAndFireReminders } from './reminders.js';
+import { renderStats } from './stats.js';
+import { renderToday } from './today.js';
 
-// ── State ────────────────────────────────────────────────────────────────────
-let medications  = [];
-let filterCat    = null;   // null = All
-let sortBy       = 'name';
-let encKey       = null;
-let editingId    = null;   // null = adding
-let swReg        = null;
-let _pendingDeleteId = null;
-let _doseReminderCount = 0; // tracks current reminder time entries in form
-let _historyMedId    = null;
+// ── State ─────────────────────────────────────────────────────────────────────
+let medications       = [];
+let filterCat         = null;
+let sortBy            = 'name';
+let encKey            = null;
+let editingId         = null;
+let swReg             = null;
+let currentTab        = 'home';
+let searchQuery       = '';
+let _pendingDeleteId  = null;
+let _pendingRefillId  = null;
+let _doseReminderCount = 0;
+let _historyMedId     = null;
 
-// ── Constants ────────────────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
 const CAT_COLORS = {
   'Chronic':    '#0061A4',
   'PRN':        '#7D5260',
@@ -71,7 +79,10 @@ const STRENGTHS = ['1mg','2mg','2.5mg','5mg','10mg','12.5mg','20mg','25mg',
 const UNITS = ['tablets','capsules','pills','mL','mg','mcg','drops','patches',
   'puffs','units','IU','sprays','suppositories','lozenges'];
 
-// ── Bootstrap ────────────────────────────────────────────────────────────────
+const FREQ_OPTIONS = ['Once daily','Twice daily','Three times daily','Four times daily',
+  'Every other day','Weekly','As needed (PRN)','Other'];
+
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   customElements.whenDefined('md-fab').then(init);
 });
@@ -102,7 +113,6 @@ async function init() {
 
 async function loadAndRender() {
   medications = await getMedications();
-  // Attach last-taken timestamps
   for (const med of medications) {
     const last = await getLastTakeDose(med.id);
     med._lastTaken = last ? last.timestamp : null;
@@ -113,7 +123,7 @@ async function loadAndRender() {
   bindEvents();
 }
 
-// ── Theme ────────────────────────────────────────────────────────────────────
+// ── Theme ─────────────────────────────────────────────────────────────────────
 function applyTheme(theme) {
   const root = document.documentElement;
   root.removeAttribute('data-theme');
@@ -121,16 +131,55 @@ function applyTheme(theme) {
   if (theme === 'dark')  root.setAttribute('data-theme', 'dark');
 }
 
-// ── Grid ─────────────────────────────────────────────────────────────────────
+// ── Tab navigation ────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  if (currentTab === tab) return;
+  currentTab = tab;
+
+  ['home','today','stats'].forEach(t => {
+    const page = document.getElementById(`tab-${t}`);
+    if (page) page.hidden = t !== tab;
+  });
+
+  document.querySelectorAll('.nav-item').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+
+  const sortAnchor = document.getElementById('sort-anchor');
+  const fabContainer = document.getElementById('fab-container');
+  const searchBtn = document.getElementById('btn-search');
+
+  if (sortAnchor)  sortAnchor.style.display = tab === 'home' ? '' : 'none';
+  if (fabContainer) fabContainer.hidden = tab !== 'home';
+  if (searchBtn)   searchBtn.style.display = tab === 'home' ? '' : 'none';
+
+  if (tab === 'today') {
+    const container = document.getElementById('today-content');
+    renderToday(container, medications, handleTakeFromToday);
+  }
+  if (tab === 'stats') {
+    const container = document.getElementById('stats-content');
+    renderStats(container, medications);
+  }
+}
+
+// ── Grid ──────────────────────────────────────────────────────────────────────
 function renderGrid() {
   const grid  = document.getElementById('med-grid');
   const empty = document.getElementById('empty-state');
 
   let list = [...medications];
-  if (filterCat) list = list.filter(m => m.category === filterCat);
+  if (filterCat)    list = list.filter(m => m.category === filterCat);
+  if (searchQuery)  list = list.filter(m => (m.name || '').toLowerCase().includes(searchQuery.toLowerCase())
+                                          || (m.genericName || '').toLowerCase().includes(searchQuery.toLowerCase()));
 
   list.sort((a, b) => {
     if (sortBy === 'quantity')   return (a.quantity ?? 0) - (b.quantity ?? 0);
+    if (sortBy === 'supply') {
+      const sa = supplyDays(a) ?? Infinity;
+      const sb = supplyDays(b) ?? Infinity;
+      return sa - sb;
+    }
     if (sortBy === 'refillDate') {
       if (!a.refillDate) return 1;
       if (!b.refillDate) return -1;
@@ -151,25 +200,30 @@ function renderGrid() {
   renderFilterChips();
 }
 
+function supplyDays(med) {
+  const qty  = med.quantity ?? 0;
+  const dpd  = estimateDosesPerDay(med) * (med.quantityPerDose ?? 1);
+  if (dpd <= 0 || qty <= 0) return null;
+  return Math.floor(qty / dpd);
+}
+
 function cardHTML(med) {
-  const fill       = med.fillQuantity > 0 ? med.fillQuantity : (med.quantity || 1);
-  const progress   = Math.max(0, Math.min(1, (med.quantity ?? 0) / fill));
-  const isLow      = (med.quantity ?? 0) <= (med.lowStockThreshold ?? 0);
+  const fillQty    = med.fillQuantity > 0 ? med.fillQuantity : (med.quantity || 1);
+  const progress   = Math.max(0, Math.min(1, (med.quantity ?? 0) / fillQty));
+  const isLow      = (med.quantity ?? 0) <= (med.lowStockThreshold ?? 0) && (med.lowStockThreshold ?? 0) > 0;
   const isExpired  = med.expirationDate && new Date(med.expirationDate) < new Date();
   const daysRefill = daysUntilRefill(med);
   const catColor   = CAT_COLORS[med.category] ?? CAT_COLORS['Other'];
   const accentHex  = med.color ?? '#006B5E';
-
-  const progressClass = isLow ? 'progress-bar low' : 'progress-bar';
-  const progressStyle = `--progress: ${progress}; --accent: ${accentHex};`;
+  const supplyD    = supplyDays(med);
 
   let refillBadge = '';
   if (daysRefill !== null) {
-    if (daysRefill < 0)  refillBadge = `<span class="badge badge-error">Refill overdue</span>`;
+    if (daysRefill < 0)    refillBadge = `<span class="badge badge-error">Refill overdue</span>`;
     else if (daysRefill <= 7) refillBadge = `<span class="badge badge-warn">Refill in ${daysRefill}d</span>`;
-    else refillBadge = `<span class="badge badge-ok">Refill ${formatDate(med.refillDate)}</span>`;
+    else               refillBadge = `<span class="badge badge-ok">Refill ${formatDate(med.refillDate)}</span>`;
   }
-  if (isExpired) refillBadge += `<span class="badge badge-error">Expired</span>`;
+  if (isExpired)  refillBadge += `<span class="badge badge-error">Expired</span>`;
 
   const lastTakenStr = med._lastTaken ? timeAgo(med._lastTaken) : null;
   const unit = med.unit || 'left';
@@ -210,17 +264,21 @@ function cardHTML(med) {
       </div>
     </div>
 
-    <div class="card-qty">
-      <div class="${progressClass}" style="${progressStyle}">
+    <div class="card-qty-row">
+      <div class="progress-bar ${isLow ? 'low' : ''}" style="--progress:${progress};--accent:${accentHex}">
         <div class="progress-fill"></div>
       </div>
       <span class="qty-label ${isLow ? 'qty-low' : ''}">${med.quantity ?? 0} ${esc(unit)}</span>
     </div>
 
+    ${supplyD !== null ? `<p class="card-supply ${supplyD <= 7 ? 'supply-critical' : supplyD <= 14 ? 'supply-low' : ''}">
+      <md-icon>hourglass_bottom</md-icon> ~${supplyD} day${supplyD !== 1 ? 's' : ''} supply</p>` : ''}
+
     <div class="card-badges">${refillBadge}${isLow ? '<span class="badge badge-warn">Low stock</span>' : ''}</div>
 
-    ${med.fillDate ? `<p class="card-meta"><md-icon>calendar_today</md-icon> Filled ${formatDate(med.fillDate)}</p>` : ''}
-    ${lastTakenStr  ? `<p class="card-meta"><md-icon>schedule</md-icon> Last taken ${lastTakenStr}</p>` : ''}
+    ${med.fillDate   ? `<p class="card-meta"><md-icon>calendar_today</md-icon> Filled ${formatDate(med.fillDate)}</p>` : ''}
+    ${lastTakenStr   ? `<p class="card-meta"><md-icon>schedule</md-icon> Last taken ${lastTakenStr}</p>` : ''}
+    ${med.sig        ? `<p class="card-meta card-sig"><md-icon>receipt</md-icon> ${esc(med.sig)}</p>` : ''}
 
     <div class="card-actions">
       <md-filled-button class="btn-take" data-med-id="${med.id}" ?disabled="${(med.quantity ?? 0) <= 0}">
@@ -236,15 +294,13 @@ function cardHTML(med) {
 
 function attachCardEvents(el) {
   const medId = Number(el.dataset.medId);
-
   el.querySelector('.btn-take')?.addEventListener('click', () => handleTake(medId));
   el.querySelector('.btn-add-one')?.addEventListener('click', () => handleAddOne(medId));
 
-  const menuBtn  = el.querySelector('.card-menu-btn');
-  const menu     = el.querySelector('.card-menu');
+  const menuBtn = el.querySelector('.card-menu-btn');
+  const menu    = el.querySelector('.card-menu');
   if (menuBtn && menu) {
     menuBtn.addEventListener('click', e => { e.stopPropagation(); menu.open = !menu.open; });
-    menu.addEventListener('close-menu', () => {});
     menu.querySelectorAll('md-menu-item').forEach(item => {
       item.addEventListener('click', () => {
         const action = item.dataset.action;
@@ -257,37 +313,32 @@ function attachCardEvents(el) {
   }
 }
 
-// ── Filter chips ─────────────────────────────────────────────────────────────
+// ── Filter chips ──────────────────────────────────────────────────────────────
 function renderFilterChips() {
   const bar = document.getElementById('filter-bar');
   if (!bar) return;
-  const cats   = [...new Set(medications.map(m => m.category).filter(Boolean))].sort();
-  const allCats = ['All', ...cats];
-
-  bar.innerHTML = allCats.map(cat => {
+  const cats = [...new Set(medications.map(m => m.category).filter(Boolean))].sort();
+  bar.innerHTML = ['All', ...cats].map(cat => {
     const selected = (cat === 'All' && !filterCat) || cat === filterCat;
     return `<md-filter-chip label="${esc(cat)}" ${selected ? 'selected' : ''} data-cat="${esc(cat)}"></md-filter-chip>`;
   }).join('');
 
   bar.querySelectorAll('md-filter-chip').forEach(chip => {
     chip.addEventListener('click', () => {
-      const cat = chip.dataset.cat;
-      filterCat = cat === 'All' ? null : cat;
+      filterCat = chip.dataset.cat === 'All' ? null : chip.dataset.cat;
       renderGrid();
     });
   });
 }
 
-// ── Take / Add one ───────────────────────────────────────────────────────────
+// ── Take / Add one ────────────────────────────────────────────────────────────
 async function handleTake(medId) {
   const med = medications.find(m => m.id === medId);
   if (!med || (med.quantity ?? 0) <= 0) return;
-
   const newQty = await recordTake(med);
   await saveMedication({ ...med, quantity: newQty });
-  med.quantity  = newQty;
+  med.quantity   = newQty;
   med._lastTaken = Date.now();
-
   updateCardQty(medId, newQty, med);
   showToast(`Took ${med.name} — ${newQty} ${med.unit || 'left'}`);
   checkAndFireReminders();
@@ -296,21 +347,26 @@ async function handleTake(medId) {
 async function handleAddOne(medId) {
   const med = medications.find(m => m.id === medId);
   if (!med) return;
-
   const newQty = await recordAddOne(med);
   await saveMedication({ ...med, quantity: newQty });
   med.quantity = newQty;
-
   updateCardQty(medId, newQty, med);
   showToast(`+1 added to ${med.name}`);
+}
+
+async function handleTakeFromToday(medId) {
+  await handleTake(medId);
+  const container = document.getElementById('today-content');
+  renderToday(container, medications, handleTakeFromToday);
 }
 
 function updateCardQty(medId, newQty, med) {
   const card = document.querySelector(`.med-card[data-med-id="${medId}"]`);
   if (!card) return;
-  const fill    = med.fillQuantity > 0 ? med.fillQuantity : (newQty || 1);
+
+  const fill     = med.fillQuantity > 0 ? med.fillQuantity : Math.max(newQty, 1);
   const progress = Math.max(0, Math.min(1, newQty / fill));
-  const isLow   = newQty <= (med.lowStockThreshold ?? 0);
+  const isLow    = newQty <= (med.lowStockThreshold ?? 0) && (med.lowStockThreshold ?? 0) > 0;
 
   const bar = card.querySelector('.progress-bar');
   if (bar) { bar.style.setProperty('--progress', progress); bar.classList.toggle('low', isLow); }
@@ -319,50 +375,47 @@ function updateCardQty(medId, newQty, med) {
   if (label) {
     label.textContent = `${newQty} ${med.unit || 'left'}`;
     label.classList.toggle('qty-low', isLow);
+    label.classList.add('qty-flash');
+    setTimeout(() => label.classList.remove('qty-flash'), 350);
   }
 
-  const takeBtn = card.querySelector('.btn-take');
-  if (takeBtn) takeBtn.disabled = newQty <= 0;
+  const supplyEl = card.querySelector('.card-supply');
+  if (supplyEl) {
+    const sd = supplyDays({ ...med, quantity: newQty });
+    if (sd !== null) {
+      supplyEl.innerHTML = `<md-icon>hourglass_bottom</md-icon> ~${sd} day${sd !== 1 ? 's' : ''} supply`;
+      supplyEl.className = `card-supply ${sd <= 7 ? 'supply-critical' : sd <= 14 ? 'supply-low' : ''}`;
+    }
+  }
+
+  card.querySelector('.btn-take')?.toggleAttribute('disabled', newQty <= 0);
 
   const badgesEl = card.querySelector('.card-badges');
   if (badgesEl) {
     let html = '';
     const days = daysUntilRefill(med);
     if (days !== null) {
-      if (days < 0)        html += `<span class="badge badge-error">Refill overdue</span>`;
-      else if (days <= 7)  html += `<span class="badge badge-warn">Refill in ${days}d</span>`;
+      if (days < 0)       html += `<span class="badge badge-error">Refill overdue</span>`;
+      else if (days <= 7) html += `<span class="badge badge-warn">Refill in ${days}d</span>`;
     }
     if (isLow) html += `<span class="badge badge-warn">Low stock</span>`;
     badgesEl.innerHTML = html;
   }
-
-  const metaEl = card.querySelector('.card-meta');
-  if (metaEl) {
-    const ts = card.querySelector('p.card-meta md-icon');
-    if (ts && ts.textContent.trim() === 'schedule') {
-      metaEl.innerHTML = `<md-icon>schedule</md-icon> Last taken ${timeAgo(Date.now())}`;
-    }
-  }
 }
 
-// ── Add / Edit Medication dialog ─────────────────────────────────────────────
+// ── Add / Edit dialog ─────────────────────────────────────────────────────────
 async function openMedDialog(medId = null) {
   editingId = medId;
-  const dialog    = document.getElementById('med-dialog');
-  const headline  = document.getElementById('med-dialog-headline');
-  headline.textContent = medId ? 'Edit Medication' : 'Add Medication';
-
+  document.getElementById('med-dialog-headline').textContent = medId ? 'Edit Medication' : 'Add Medication';
   resetMedForm();
   renderColorPicker();
-
   if (medId) {
     const med = medications.find(m => m.id === medId);
     if (med) populateMedForm(med);
   } else {
-    // Default fill date to today
     setField('fill-date', today());
   }
-  dialog.show();
+  document.getElementById('med-dialog').show();
 }
 
 function resetMedForm() {
@@ -375,35 +428,33 @@ function resetMedForm() {
 
 function populateMedForm(med) {
   const set = (id, val) => { const el = document.getElementById(`field-${id}`); if (el && val != null) el.value = val; };
-  set('name',         med.name);
-  set('generic-name', med.genericName);
-  set('strength',     med.strength);
-  set('form',         med.form);
-  set('category',     med.category);
-  set('quantity',     med.quantity);
-  set('qty-per-dose', med.quantityPerDose ?? 1);
-  set('unit',         med.unit);
-  set('days-supply',  med.daysSupply);
-  set('low-stock',    med.lowStockThreshold);
-  set('fill-date',    med.fillDate);
-  set('refill-date',  med.refillDate);
-  set('expiry-date',  med.expirationDate);
+  set('name',              med.name);
+  set('generic-name',      med.genericName);
+  set('strength',          med.strength);
+  set('form',              med.form);
+  set('category',          med.category);
+  set('quantity',          med.quantity);
+  set('qty-per-dose',      med.quantityPerDose ?? 1);
+  set('unit',              med.unit);
+  set('days-supply',       med.daysSupply);
+  set('low-stock',         med.lowStockThreshold);
+  set('fill-date',         med.fillDate);
+  set('refill-date',       med.refillDate);
+  set('expiry-date',       med.expirationDate);
   set('prescriber',        med.prescriber);
   set('prescriber-phone',  med.prescriberPhone);
   set('pharmacy',          med.pharmacy);
   set('pharmacy-phone',    med.pharmacyPhone);
   set('rx',                med.rxNumber);
-  set('sig',          med.sig);
-  set('notes',        med.notes);
-  set('refill-alert', med.reminders?.refillAlertDays ?? 7);
+  set('sig',               med.sig);
+  set('notes',             med.notes);
+  set('refill-alert',      med.reminders?.refillAlertDays ?? 7);
 
-  // Color picker
   if (med.color) {
     const radio = document.querySelector(`input[name="med-color"][value="${med.color}"]`);
     if (radio) radio.checked = true;
   }
 
-  // Reminders
   const rem = med.reminders;
   if (rem?.doseAlerts?.length) {
     for (const alert of rem.doseAlerts) addReminderRow(alert.time, alert.days);
@@ -418,35 +469,31 @@ function populateMedForm(med) {
 async function saveMedHandler() {
   const form = document.getElementById('med-form');
   if (!form.reportValidity()) return;
-
-  const get = id => {
-    const el = document.getElementById(`field-${id}`);
-    return el ? el.value.trim() : '';
-  };
-
+  const get = id => { const el = document.getElementById(`field-${id}`); return el ? el.value.trim() : ''; };
   const reminders = buildReminders();
+
   const data = {
-    name:             get('name'),
-    genericName:      get('generic-name'),
-    strength:         get('strength'),
-    form:             get('form'),
-    category:         get('category') || 'Other',
-    quantity:         parseNum(get('quantity'), 0),
-    quantityPerDose:  parseNum(get('qty-per-dose'), 1),
-    unit:             get('unit') || 'pills',
-    daysSupply:       parseNum(get('days-supply'), null),
+    name:              get('name'),
+    genericName:       get('generic-name'),
+    strength:          get('strength'),
+    form:              get('form'),
+    category:          get('category') || 'Other',
+    quantity:          parseNum(get('quantity'), 0),
+    quantityPerDose:   parseNum(get('qty-per-dose'), 1),
+    unit:              get('unit') || 'pills',
+    daysSupply:        parseNum(get('days-supply'), null),
     lowStockThreshold: parseNum(get('low-stock'), 0),
-    fillDate:         get('fill-date') || null,
-    refillDate:       get('refill-date') || null,
-    expirationDate:   get('expiry-date') || null,
-    prescriber:       get('prescriber'),
-    prescriberPhone:  get('prescriber-phone'),
-    pharmacy:         get('pharmacy'),
-    pharmacyPhone:    get('pharmacy-phone'),
-    rxNumber:         get('rx'),
-    sig:              get('sig'),
-    notes:            get('notes'),
-    color:            document.querySelector('input[name="med-color"]:checked')?.value ?? '#006B5E',
+    fillDate:          get('fill-date') || null,
+    refillDate:        get('refill-date') || null,
+    expirationDate:    get('expiry-date') || null,
+    prescriber:        get('prescriber'),
+    prescriberPhone:   get('prescriber-phone'),
+    pharmacy:          get('pharmacy'),
+    pharmacyPhone:     get('pharmacy-phone'),
+    rxNumber:          get('rx'),
+    sig:               get('sig'),
+    notes:             get('notes'),
+    color:             document.querySelector('input[name="med-color"]:checked')?.value ?? '#006B5E',
     reminders,
   };
 
@@ -454,9 +501,7 @@ async function saveMedHandler() {
 
   if (editingId) {
     const existing = medications.find(m => m.id === editingId);
-    if (existing && data.quantity > existing.quantity) {
-      data.fillQuantity = data.quantity;
-    }
+    if (existing && data.quantity > existing.quantity) data.fillQuantity = data.quantity;
     data.id = editingId;
   }
 
@@ -476,32 +521,24 @@ function buildReminders() {
   const refillDays = parseNum(document.getElementById('field-refill-alert')?.value, null);
   const trackOn    = document.getElementById('switch-tracking')?.selected ?? false;
   const trackH     = parseNum(document.getElementById('field-tracking-hours')?.value, 12);
-
-  const doseRows = document.querySelectorAll('.reminder-row');
   const doseAlerts = [];
-  doseRows.forEach(row => {
+  document.querySelectorAll('.reminder-row').forEach(row => {
     const time = row.querySelector('.reminder-time')?.value;
     if (!time) return;
     const days = [];
     row.querySelectorAll('.day-chip input:checked').forEach(cb => days.push(Number(cb.value)));
     doseAlerts.push({ time, days: days.length === 7 ? [0,1,2,3,4,5,6] : days });
   });
-
-  return {
-    doseAlerts,
-    refillAlertDays: refillDays,
-    trackingAlert: { enabled: trackOn, maxHoursSinceDose: trackH },
-  };
+  return { doseAlerts, refillAlertDays: refillDays, trackingAlert: { enabled: trackOn, maxHoursSinceDose: trackH } };
 }
 
 function addReminderRow(time = '08:00', days = [0,1,2,3,4,5,6]) {
-  const list  = document.getElementById('dose-reminders-list');
-  const idx   = _doseReminderCount++;
+  const list     = document.getElementById('dose-reminders-list');
+  _doseReminderCount++;
   const dayNames = ['Su','Mo','Tu','We','Th','Fr','Sa'];
-
-  const row = document.createElement('div');
-  row.className = 'reminder-row';
-  row.innerHTML = `
+  const row      = document.createElement('div');
+  row.className  = 'reminder-row';
+  row.innerHTML  = `
     <input type="time" class="reminder-time" value="${time}">
     <div class="day-chips">
       ${dayNames.map((d, i) => `
@@ -513,38 +550,50 @@ function addReminderRow(time = '08:00', days = [0,1,2,3,4,5,6]) {
     <md-icon-button class="btn-remove-reminder" aria-label="Remove">
       <md-icon>close</md-icon>
     </md-icon-button>`;
-
   row.querySelector('.btn-remove-reminder').addEventListener('click', () => row.remove());
   list.appendChild(row);
 }
 
 // ── Refill dialog ─────────────────────────────────────────────────────────────
-async function openRefillDialog(medId) {
-  const med   = medications.find(m => m.id === medId);
+function openRefillDialog(medId) {
+  const med = medications.find(m => m.id === medId);
+  if (!med) return;
+  _pendingRefillId = medId;
+
+  document.getElementById('refill-med-name-text').textContent = med.name;
+  document.getElementById('refill-qty-field').value   = med.quantity ?? 0;
+  document.getElementById('refill-date-field').value  = today();
+  document.getElementById('refill-days-field').value  = med.daysSupply ?? '';
+  document.getElementById('refill-dialog').show();
+}
+
+async function confirmRefill() {
+  if (!_pendingRefillId) return;
+  const med   = medications.find(m => m.id === _pendingRefillId);
   if (!med) return;
 
-  const qty = prompt(`Refill ${med.name}\nEnter new quantity:`, med.quantity ?? 0);
-  if (qty === null) return;
-  const newQty = parseNum(qty, null);
+  const newQty = parseNum(document.getElementById('refill-qty-field').value, null);
   if (newQty === null || newQty < 0) { showToast('Invalid quantity', 'error'); return; }
 
-  const newFill = today();
-  const refill  = med.daysSupply
-    ? (() => { const d = new Date(newFill); d.setDate(d.getDate() + med.daysSupply); return d.toISOString().split('T')[0]; })()
+  const fillDate = document.getElementById('refill-date-field').value || today();
+  const days     = parseNum(document.getElementById('refill-days-field').value, null) ?? med.daysSupply;
+  const refillDate = days
+    ? (() => { const d = new Date(fillDate); d.setDate(d.getDate() + days); return d.toISOString().split('T')[0]; })()
     : med.refillDate;
 
-  const updatedMed = { ...med, quantity: newQty, fillQuantity: newQty, fillDate: newFill, refillDate: refill };
+  const updatedMed = { ...med, quantity: newQty, fillQuantity: newQty, fillDate, refillDate, daysSupply: days ?? med.daysSupply };
   await recordRefill(med, newQty);
   await saveMedication(updatedMed);
 
-  const idx = medications.findIndex(m => m.id === medId);
-  medications[idx] = updatedMed;
+  const idx = medications.findIndex(m => m.id === _pendingRefillId);
+  if (idx !== -1) medications[idx] = updatedMed;
+  _pendingRefillId = null;
+  document.getElementById('refill-dialog').close();
   renderGrid();
   showToast(`${med.name} refilled — ${newQty} ${med.unit || 'pills'}`);
 }
 
 // ── History page ──────────────────────────────────────────────────────────────
-
 async function openHistoryPage(medId) {
   _historyMedId = medId;
   const med = medications.find(m => m.id === medId);
@@ -559,6 +608,7 @@ async function openHistoryPage(medId) {
 
   const doses = await getDosesForMedication(medId, 500);
 
+  document.getElementById('hist-chart-card').innerHTML  = buildQuantityChart(doses, med);
   document.getElementById('hist-adherence-card').innerHTML = buildAdherenceHTML(med, doses);
 
   const listEl = document.getElementById('hist-dose-list');
@@ -567,20 +617,58 @@ async function openHistoryPage(medId) {
   } else {
     listEl.innerHTML = doses.map(d => buildDoseCardHTML(med, d, doses)).join('');
     listEl.querySelectorAll('.dose-card-header').forEach(header => {
-      header.addEventListener('click', () => {
-        header.closest('.dose-card').classList.toggle('dose-card--open');
-      });
+      header.addEventListener('click', () => header.closest('.dose-card').classList.toggle('dose-card--open'));
     });
   }
 
   document.getElementById('btn-hist-print').onclick  = () => printHistory(medId, med.name);
-  document.getElementById('btn-hist-export').onclick = () => exportAllData();
+  document.getElementById('btn-hist-export').onclick = exportAllData;
 }
 
 function closeHistoryPage() {
   hideElement('history-page');
   showElement('app');
   _historyMedId = null;
+}
+
+function buildQuantityChart(doses, med) {
+  if (doses.length < 2) return '';
+  const sorted = [...doses].reverse();
+  const times  = sorted.map(d => d.timestamp);
+  const vals   = sorted.map(d => d.quantityAfter);
+  const minT   = times[0];
+  const maxT   = times[times.length - 1];
+  if (minT === maxT) return '';
+  const maxQ   = Math.max(...vals, med.fillQuantity ?? 0, 1);
+
+  const W = 320, H = 72, padX = 12, padY = 8;
+  const mx = t => padX + ((t - minT) / (maxT - minT)) * (W - padX * 2);
+  const my = q => padY + (H - padY * 2) * (1 - q / maxQ);
+
+  const pts  = sorted.map((d, i) => `${i === 0 ? 'M' : 'L'}${mx(d.timestamp).toFixed(1)},${my(d.quantityAfter).toFixed(1)}`).join(' ');
+  const area = `${pts} L${mx(maxT).toFixed(1)},${H} L${mx(minT).toFixed(1)},${H} Z`;
+
+  const dots = sorted.filter(d => d.action === 'refill').map(d =>
+    `<circle cx="${mx(d.timestamp).toFixed(1)}" cy="${my(d.quantityAfter).toFixed(1)}" r="4" fill="#386A1F" stroke="white" stroke-width="1.5"/>`
+  ).join('');
+
+  return `<div class="hist-chart-wrap">
+    <div class="hist-chart-title">Quantity over time</div>
+    <svg class="qty-chart" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto">
+      <defs>
+        <linearGradient id="qg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="var(--md-sys-color-primary)" stop-opacity=".25"/>
+          <stop offset="100%" stop-color="var(--md-sys-color-primary)" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <path d="${area}" fill="url(#qg)"/>
+      <path d="${pts}" fill="none" stroke="var(--md-sys-color-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      ${dots}
+    </svg>
+    <div class="qty-chart-legend">
+      <span><svg width="10" height="10"><circle cx="5" cy="5" r="4" fill="#386A1F"/></svg> Refill event</span>
+    </div>
+  </div>`;
 }
 
 function buildAdherenceHTML(med, doses) {
@@ -603,13 +691,15 @@ function buildAdherenceHTML(med, doses) {
   const expected  = Math.round(daysSince * dpd);
   const pct       = expected > 0 ? Math.min(100, Math.round((takenCount / expected) * 100)) : null;
   const pctColor  = pct == null ? '#006B5E' : pct >= 80 ? '#386A1F' : pct >= 60 ? '#C25B00' : '#B3261E';
+  const sd        = supplyDays(med);
 
   return `
   <div class="hist-adherence">
     <div class="hist-adh-row"><span>Fill date:</span><strong>${formatDate(med.fillDate)}</strong></div>
-    <div class="hist-adh-row"><span>Starting quantity:</span><strong>${fillQty} ${esc(med.unit || 'pills')}</strong></div>
-    <div class="hist-adh-row"><span>Currently remaining:</span><strong>${curQty} ${esc(med.unit || 'pills')}</strong></div>
+    <div class="hist-adh-row"><span>Starting qty:</span><strong>${fillQty} ${esc(med.unit || 'pills')}</strong></div>
+    <div class="hist-adh-row"><span>Remaining:</span><strong>${curQty} ${esc(med.unit || 'pills')}</strong></div>
     <div class="hist-adh-row"><span>Consumed:</span><strong>${consumed >= 0 ? consumed : '—'} ${esc(med.unit || 'pills')}</strong></div>
+    ${sd !== null ? `<div class="hist-adh-row"><span>Est. supply left:</span><strong>~${sd} day${sd !== 1 ? 's' : ''}</strong></div>` : ''}
     ${expected > 0 ? `
     <div class="hist-adh-divider"></div>
     <div class="hist-adh-row"><span>Expected doses by now:</span><strong>${expected}</strong></div>
@@ -622,7 +712,7 @@ function buildAdherenceHTML(med, doses) {
   </div>`;
 }
 
-function estimateDosesPerDay(med) {
+export function estimateDosesPerDay(med) {
   if (med.reminders?.doseAlerts?.length) {
     return med.reminders.doseAlerts.reduce((s, a) => s + (a.days?.length ?? 7) / 7, 0);
   }
@@ -633,14 +723,11 @@ function estimateDosesPerDay(med) {
   if (sig.includes('weekly'))                        return 1 / 7;
   if (sig.includes('every other'))                   return 0.5;
   if (med.daysSupply && med.fillQuantity && med.quantityPerDose) {
-    const qpd = med.fillQuantity / med.daysSupply / med.quantityPerDose;
-    if (qpd > 0 && qpd <= 6) return qpd;
+    const q = med.fillQuantity / med.daysSupply / med.quantityPerDose;
+    if (q > 0 && q <= 6) return q;
   }
   return 1;
 }
-
-const FREQ_OPTIONS = ['Once daily','Twice daily','Three times daily','Four times daily',
-  'Every other day','Weekly','As needed (PRN)','Other'];
 
 function buildDoseCardHTML(med, dose, allDoses) {
   const dt       = new Date(dose.timestamp);
@@ -675,20 +762,18 @@ function buildExpandedBody(med, dose, deltaStr, dColor, allDoses) {
   const sigLower = (med.sig || '').toLowerCase();
 
   const histItems = allDoses.slice(0, 60).map(d => {
-    const ddt    = new Date(d.timestamp);
-    const ddelta = d.quantityAfter - d.quantityBefore;
-    const dPos   = ddelta >= 0;
+    const ddt = new Date(d.timestamp);
+    const dd  = d.quantityAfter - d.quantityBefore;
     return `<div class="hist-mini-row${d.id === dose.id ? ' hist-mini-current' : ''}">
-      <span class="hist-mini-delta" style="color:${dPos ? '#386A1F' : '#B3261E'}">${dPos ? '+' : ''}${ddelta}</span>
+      <span class="hist-mini-delta" style="color:${dd >= 0 ? '#386A1F' : '#B3261E'}">${dd >= 0 ? '+' : ''}${dd}</span>
       <span class="hist-mini-remaining">${d.quantityAfter}</span>
-      <span class="hist-mini-label">${esc({ take: 'Took', add: 'Added', refill: 'Refill', edit: 'Edit' }[d.action] ?? d.action)}</span>
-      <span class="hist-mini-time">${ddt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${ddt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+      <span class="hist-mini-label">${esc({ take:'Took', add:'Added', refill:'Refill', edit:'Edit' }[d.action] ?? d.action)}</span>
+      <span class="hist-mini-time">${ddt.toLocaleDateString(undefined,{month:'short',day:'numeric'})} ${ddt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>
     </div>`;
   }).join('');
 
   return `
   <div class="dose-exp-grid">
-
     <div class="dose-exp-section">
       <h4 class="dose-exp-title">Medication Details</h4>
       ${expRow('Name', med.name)}
@@ -730,7 +815,6 @@ function buildExpandedBody(med, dose, deltaStr, dColor, allDoses) {
       <h4 class="dose-exp-title">All History&ensp;<span class="dose-hist-count">${allDoses.length > 60 ? `latest 60 of ${allDoses.length}` : `${allDoses.length} entries`}</span></h4>
       <div class="hist-mini-list">${histItems || '<p style="color:var(--md-sys-color-on-surface-variant);font-size:13px;margin:0">No entries</p>'}</div>
     </div>
-
   </div>`;
 }
 
@@ -763,13 +847,12 @@ async function confirmDelete() {
 
 // ── Settings dialog ───────────────────────────────────────────────────────────
 async function openSettingsDialog() {
-  const dialog = document.getElementById('settings-dialog');
-  const theme  = await getSetting('theme', 'auto');
-  const encOn  = await getSetting('encryptionEnabled', false);
-
-  document.getElementById('settings-theme-select').value = theme;
-  document.getElementById('settings-enc-switch').selected = encOn;
-  dialog.show();
+  const theme = await getSetting('theme', 'auto');
+  const encOn = await getSetting('encryptionEnabled', false);
+  document.getElementById('settings-theme-select').value      = theme;
+  document.getElementById('settings-enc-switch').selected     = encOn;
+  document.getElementById('settings-notif-switch').selected   = notificationsGranted();
+  document.getElementById('settings-dialog').show();
 }
 
 async function saveSettings() {
@@ -785,12 +868,11 @@ async function saveSettings() {
     if (!pin || pin.length < 4) { showToast('PIN too short — encryption not enabled', 'error'); return; }
     const confirm = prompt('Confirm PIN:');
     if (pin !== confirm) { showToast('PINs do not match', 'error'); return; }
-
     const { key, saltHex, ivHex, verifyHex } = await setupEncryption(pin);
     encKey = key;
     await setSetting('encryptionEnabled', true);
-    await setSetting('encSalt',  saltHex);
-    await setSetting('encIv',    ivHex);
+    await setSetting('encSalt',   saltHex);
+    await setSetting('encIv',     ivHex);
     await setSetting('encVerify', verifyHex);
     showToast('Encryption enabled');
   } else if (!encOn && curEnc) {
@@ -799,7 +881,7 @@ async function saveSettings() {
     showToast('Encryption disabled');
   }
 
-  if (notificationsGranted() === false && document.getElementById('settings-notif-switch')?.selected) {
+  if (document.getElementById('settings-notif-switch')?.selected && !notificationsGranted()) {
     await requestNotificationPermission();
   }
 
@@ -817,11 +899,10 @@ async function submitPin() {
   const saltHex = await getSetting('encSalt');
   const ivHex   = await getSetting('encIv');
   const verify  = await getSetting('encVerify');
-
-  const key = await unlockWithPin(pin, saltHex, ivHex, verify);
+  const key     = await unlockWithPin(pin, saltHex, ivHex, verify);
   if (!key) {
     document.getElementById('pin-error').hidden = false;
-    document.getElementById('pin-input').value = '';
+    document.getElementById('pin-input').value  = '';
     return;
   }
   encKey = key;
@@ -834,12 +915,11 @@ function setupAutocomplete(inputId, listId, items) {
   const input = document.getElementById(inputId);
   const list  = document.getElementById(listId);
   if (!input || !list) return;
-
   input.addEventListener('input', () => {
     const q = input.value.toLowerCase();
     if (q.length < 1) { list.hidden = true; return; }
     const hits = items.filter(s => s.toLowerCase().includes(q)).slice(0, 8);
-    if (hits.length === 0) { list.hidden = true; return; }
+    if (!hits.length) { list.hidden = true; return; }
     list.innerHTML = hits.map(h => `<li class="ac-item" tabindex="-1">${esc(h)}</li>`).join('');
     list.hidden = false;
     list.querySelectorAll('.ac-item').forEach(li => {
@@ -852,7 +932,6 @@ function setupAutocomplete(inputId, listId, items) {
       });
     });
   });
-
   input.addEventListener('blur', () => setTimeout(() => { list.hidden = true; }, 200));
 }
 
@@ -864,11 +943,11 @@ async function setupDynamicAutocomplete(inputId, listId, settingKey) {
 }
 
 function autoFillGenericName(brandName) {
-  const brand2generic = { 'Tylenol': 'Acetaminophen', 'Advil': 'Ibuprofen', 'Motrin': 'Ibuprofen',
-    'Aleve': 'Naproxen', 'Benadryl': 'Diphenhydramine', 'Claritin': 'Loratadine',
-    'Zyrtec': 'Cetirizine', 'Prilosec': 'Omeprazole', 'Nexium': 'Esomeprazole',
-    'Pepcid': 'Famotidine', 'MiraLax': 'Polyethylene Glycol 3350', 'Dulcolax': 'Bisacodyl', };
-  const generic = brand2generic[brandName];
+  const map = { 'Tylenol':'Acetaminophen','Advil':'Ibuprofen','Motrin':'Ibuprofen',
+    'Aleve':'Naproxen','Benadryl':'Diphenhydramine','Claritin':'Loratadine',
+    'Zyrtec':'Cetirizine','Prilosec':'Omeprazole','Nexium':'Esomeprazole',
+    'Pepcid':'Famotidine','MiraLax':'Polyethylene Glycol 3350','Dulcolax':'Bisacodyl' };
+  const generic = map[brandName];
   if (generic) {
     const el = document.getElementById('field-generic-name');
     if (el && !el.value) el.value = generic;
@@ -876,16 +955,16 @@ function autoFillGenericName(brandName) {
 }
 
 async function saveAutocompleteHistory(prescriber, pharmacy) {
-  const saveToList = async (key, value) => {
+  const save = async (key, value) => {
     if (!value) return;
-    const raw  = await getSetting(key, '[]');
+    const raw = await getSetting(key, '[]');
     let list;
     try { list = JSON.parse(raw); } catch { list = []; }
     if (!list.includes(value)) { list.unshift(value); list = list.slice(0, 20); }
     await setSetting(key, JSON.stringify(list));
   };
-  await saveToList('ac-prescribers', prescriber);
-  await saveToList('ac-pharmacies',  pharmacy);
+  await save('ac-prescribers', prescriber);
+  await save('ac-pharmacies', pharmacy);
 }
 
 // ── Color picker ──────────────────────────────────────────────────────────────
@@ -909,31 +988,49 @@ function bindEvents() {
   // FAB
   document.getElementById('fab-add').addEventListener('click', () => openMedDialog());
 
+  // Bottom nav
+  document.querySelectorAll('.nav-item').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+
   // Sort menu
   document.getElementById('btn-sort').addEventListener('click', () => {
     document.getElementById('sort-menu').open = true;
   });
   document.querySelectorAll('#sort-menu md-menu-item').forEach(item => {
-    item.addEventListener('click', () => {
-      sortBy = item.dataset.sort;
-      renderGrid();
-    });
+    item.addEventListener('click', () => { sortBy = item.dataset.sort; renderGrid(); });
+  });
+
+  // Search
+  document.getElementById('btn-search').addEventListener('click', () => {
+    const bar = document.getElementById('search-bar');
+    bar.hidden = !bar.hidden;
+    if (!bar.hidden) document.getElementById('search-input').focus();
+    else { searchQuery = ''; document.getElementById('search-input').value = ''; renderGrid(); }
+  });
+  document.getElementById('btn-search-close').addEventListener('click', () => {
+    document.getElementById('search-bar').hidden = true;
+    searchQuery = '';
+    document.getElementById('search-input').value = '';
+    renderGrid();
+  });
+  document.getElementById('search-input').addEventListener('input', e => {
+    searchQuery = e.target.value;
+    renderGrid();
   });
 
   // Settings
   document.getElementById('btn-settings').addEventListener('click', openSettingsDialog);
 
-  // Medication dialog actions
+  // Med dialog
   document.getElementById('btn-med-save').addEventListener('click', saveMedHandler);
-  document.getElementById('btn-med-cancel').addEventListener('click', () => {
-    document.getElementById('med-dialog').close();
-  });
+  document.getElementById('btn-med-cancel').addEventListener('click', () => document.getElementById('med-dialog').close());
 
   // Auto-fill refill date
-  ['field-fill-date', 'field-days-supply'].forEach(id => {
+  ['field-fill-date','field-days-supply'].forEach(id => {
     document.getElementById(id)?.addEventListener('change', () => {
-      const fillDate  = document.getElementById('field-fill-date')?.value;
-      const days      = parseNum(document.getElementById('field-days-supply')?.value, null);
+      const fillDate = document.getElementById('field-fill-date')?.value;
+      const days     = parseNum(document.getElementById('field-days-supply')?.value, null);
       if (fillDate && days) {
         const d = new Date(fillDate); d.setDate(d.getDate() + days);
         const el = document.getElementById('field-refill-date');
@@ -941,23 +1038,25 @@ function bindEvents() {
       }
     });
   });
-  document.getElementById('field-refill-date')?.addEventListener('input', e => {
-    e.target.dataset.manualEdit = '1';
-  });
+  document.getElementById('field-refill-date')?.addEventListener('input', e => { e.target.dataset.manualEdit = '1'; });
 
-  // Auto-fill low-stock threshold from qty per dose
   document.getElementById('field-qty-per-dose')?.addEventListener('change', () => {
     const perDose = parseNum(document.getElementById('field-qty-per-dose')?.value, 1);
-    const el      = document.getElementById('field-low-stock');
+    const el = document.getElementById('field-low-stock');
     if (el && !el.value) el.value = perDose * 7;
   });
 
-  // Add reminder button
+  // Reminders
   document.getElementById('btn-add-reminder').addEventListener('click', () => addReminderRow());
-
-  // Tracking switch
   document.getElementById('switch-tracking').addEventListener('change', e => {
     document.getElementById('tracking-options').hidden = !e.target.selected;
+  });
+
+  // Refill dialog
+  document.getElementById('btn-refill-confirm').addEventListener('click', confirmRefill);
+  document.getElementById('btn-refill-cancel').addEventListener('click', () => {
+    document.getElementById('refill-dialog').close();
+    _pendingRefillId = null;
   });
 
   // History page
@@ -972,15 +1071,11 @@ function bindEvents() {
 
   // Settings dialog
   document.getElementById('btn-settings-save').addEventListener('click', saveSettings);
-  document.getElementById('btn-settings-close').addEventListener('click', () => {
-    document.getElementById('settings-dialog').close();
-  });
+  document.getElementById('btn-settings-close').addEventListener('click', () => document.getElementById('settings-dialog').close());
 
-  // Export / import in settings
+  // Export / import
   document.getElementById('btn-export').addEventListener('click', exportAllData);
-  document.getElementById('btn-import').addEventListener('click', () => {
-    document.getElementById('import-file').click();
-  });
+  document.getElementById('btn-import').addEventListener('click', () => document.getElementById('import-file').click());
   document.getElementById('import-file').addEventListener('change', async e => {
     const file = e.target.files[0];
     if (!file) return;
@@ -990,13 +1085,11 @@ function bindEvents() {
       medications = await getMedications();
       renderGrid();
       showToast('Data imported successfully');
-    } catch (err) {
-      showToast('Import failed: ' + err.message, 'error');
-    }
+    } catch (err) { showToast('Import failed: ' + err.message, 'error'); }
     e.target.value = '';
   });
 
-  // Notification permission toggle
+  // Notifications
   document.getElementById('settings-notif-switch')?.addEventListener('change', async e => {
     if (e.target.selected) {
       const granted = await requestNotificationPermission();
@@ -1004,12 +1097,10 @@ function bindEvents() {
     }
   });
 
-  // Autocomplete setup (runs after dialog is present in DOM)
+  // Autocomplete
   setupAutocomplete('field-name', 'name-suggestions', DRUG_NAMES);
   setupAutocomplete('field-strength', 'strength-suggestions', STRENGTHS);
   setupAutocomplete('field-unit', 'unit-suggestions', UNITS);
-
-  // Dynamic autocompletes loaded from history
   setupDynamicAutocomplete('field-prescriber', 'prescriber-suggestions', 'ac-prescribers');
   setupDynamicAutocomplete('field-pharmacy',   'pharmacy-suggestions',   'ac-pharmacies');
 }
@@ -1034,8 +1125,8 @@ function formatDate(iso) {
 
 function timeAgo(ts) {
   const secs = Math.floor((Date.now() - ts) / 1000);
-  if (secs < 60)   return 'just now';
-  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+  if (secs < 60)    return 'just now';
+  if (secs < 3600)  return `${Math.floor(secs / 60)}m ago`;
   if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
   return `${Math.floor(secs / 86400)}d ago`;
 }
@@ -1054,7 +1145,7 @@ function showToast(msg, type = 'info') {
     document.body.appendChild(snack);
   }
   snack.textContent = msg;
-  snack.className = `snackbar snackbar-${type} snackbar-visible`;
+  snack.className   = `snackbar snackbar-${type} snackbar-visible`;
   clearTimeout(_toastTimer);
   _toastTimer = setTimeout(() => { snack.className = 'snackbar'; }, 3500);
 }
