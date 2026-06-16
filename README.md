@@ -1,4 +1,5 @@
 # 💊 MedCount
+## Justin McKay
 
 **A privacy-first medication tracker that lives entirely on your phone.**
 
