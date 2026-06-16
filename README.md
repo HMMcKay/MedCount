@@ -127,6 +127,20 @@ MedCount ships with a `render.yaml` for one-click deploys to [Render.com](https:
 
 ---
 
+## 📰 Project Log
+
+### 🔒 June 2026 — Security hardening pass
+
+Before opening this project up publicly, I went through the entire codebase and the full git history, commit by commit, looking for anything that shouldn't be there — API keys, tokens, hardcoded passwords, that sort of thing. Good news: it was clean. Nothing sensitive was ever committed.
+
+While I was in there, though, I found a real issue in the "Print History" feature. It built the printable page by writing the medication name and dose notes directly into a new browser window — without checking what was actually inside those strings first. Normally that's harmless, since I'm the only one typing those fields. But MedCount also has a JSON import feature that loads a backup file straight into the database, and that file could come from anywhere — another device, a shared backup, a friend's export. If a malicious medication name or note ever made it in through an imported file, it could have run as actual code the next time someone hit "Print." I fixed that by making sure those values are always treated as plain text no matter what's inside them, and patched the same issue in the reminder-time editor while I was at it.
+
+Nothing about how the app looks or behaves changed — printing and reminders work exactly the same as before. It just can't be turned against itself anymore.
+
+See the full [CHANGELOG](CHANGELOG.md) for the version-by-version history.
+
+---
+
 ## 📄 License
 
 Released under the [Mozilla Public License 2.0](LICENSE).
