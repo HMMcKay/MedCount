@@ -1,3 +1,4 @@
+<img width="1774" height="887" alt="project-lead-image" src="https://github.com/user-attachments/assets/10da6f27-6940-4836-9001-2fbdb50f5039" />
 # 💊 MedCount
 ## Justin McKay
 
