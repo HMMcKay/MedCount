@@ -20,21 +20,30 @@ MedCount answers the four questions every medication routine runs into:
 
 ---
 
+## 🔐 Privacy Fist Mentality & Security
+
+- **No accounts. No backend database. No analytics.**
+- 100% of medication data stays in your browser's IndexedDB
+- Optional client-side AES-256-GCM encryption with a user-chosen PIN
+- Open source under MPL-2.0 — inspect exactly what it does
+
+---
+
 ## ⚙️ How It Works
 
 MedCount is **local-first**: all of your data — medications, dose history, settings — is stored in your browser's IndexedDB. The Python backend is intentionally "dumb": it only serves the static HTML/JS/CSS app shell. There is no API, no server-side database, and nothing about your medications is ever transmitted anywhere.
 
 ```
-┌─────────────────────────────┐
+┌──────────────────────────────┐
 │        Your Browser          │
 │  ┌─────────────────────────┐ │
-│  │   MedCount PWA (UI)      │ │
+│  │   MedCount PWA (UI)     │ |
 │  ├─────────────────────────┤ │
-│  │  IndexedDB (Dexie.js)    │ │  ← all data lives here, on-device
+│  │  IndexedDB (Dexie.js)   │ │  ← all data lives here, on-device
 │  ├─────────────────────────┤ │
-│  │  Service Worker          │ │  ← offline caching + notifications
+│  │  Service Worker         │ │  ← offline caching + notifications
 │  └─────────────────────────┘ │
-└──────────────┬────────────────┘
+└──────────────┬───────────────┘
                │  static files only
                ▼
       FastAPI (serves the app shell)
@@ -45,6 +54,11 @@ Because it's a PWA, you can "Add to Home Screen" on iOS or Android and it behave
 ---
 
 ## ✨ Features
+
+### A simple. intuitive interface. Easy configuration makes for simple usage with powerful features available.
+- Powerful features and statistics are *available* but not required, use as few as you need.
+- Built in medication database fills in information as meds are entered.
+- Optional reminders, no requests for notifications unless desired.
 
 ### 📋 Medication Management
 - Track name, strength, form, dosage, prescriber, pharmacy, Rx number, and instructions (SIG)
@@ -91,14 +105,6 @@ Because it's a PWA, you can "Add to Home Screen" on iOS or Android and it behave
 
 ---
 
-## 🔐 Privacy & Security
-
-- **No accounts. No backend database. No analytics.**
-- 100% of medication data stays in your browser's IndexedDB
-- Optional client-side AES-256-GCM encryption with a user-chosen PIN
-- Open source under MPL-2.0 — inspect exactly what it does
-
----
 
 ## 🛠️ Tech Stack
 
