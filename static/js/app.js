@@ -539,7 +539,7 @@ function addReminderRow(time = '08:00', days = [0,1,2,3,4,5,6]) {
   const row      = document.createElement('div');
   row.className  = 'reminder-row';
   row.innerHTML  = `
-    <input type="time" class="reminder-time" value="${time}">
+    <input type="time" class="reminder-time" value="${esc(time)}">
     <div class="day-chips">
       ${dayNames.map((d, i) => `
         <label class="day-chip">

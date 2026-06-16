@@ -1,5 +1,10 @@
 import { db, addDose, getDosesForMedication, getAllDoses, getMedications } from './db.js';
 
+function esc(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 export async function recordTake(med) {
   const before = med.quantity;
   const after  = Math.max(0, before - (med.quantityPerDose || 1));
@@ -61,14 +66,14 @@ export async function printHistory(medicationId, medName) {
       <td>${label}</td>
       <td style="color:${change < 0 ? '#B3261E' : '#386A1F'}">${change > 0 ? '+' : ''}${change}</td>
       <td>${d.quantityAfter}</td>
-      <td>${d.note || ''}</td>
+      <td>${esc(d.note) || ''}</td>
     </tr>`;
   }).join('');
 
   const win = window.open('', '_blank', 'width=800,height=600');
   win.document.write(`<!DOCTYPE html><html><head>
     <meta charset="UTF-8">
-    <title>Dose History – ${medName}</title>
+    <title>Dose History – ${esc(medName)}</title>
     <style>
       body{font-family:Roboto,Arial,sans-serif;padding:24px;color:#191C1B}
       h1{color:#006B5E;margin:0 0 4px}
@@ -83,7 +88,7 @@ export async function printHistory(medicationId, medName) {
   </head><body>
     <button class="print-btn" onclick="window.print()">Print</button>
     <h1>Dose History</h1>
-    <p>${medName} &nbsp;·&nbsp; Generated ${new Date().toLocaleString()}</p>
+    <p>${esc(medName)} &nbsp;·&nbsp; Generated ${new Date().toLocaleString()}</p>
     <table>
       <thead><tr><th>Date</th><th>Time</th><th>Action</th><th>Change</th><th>Remaining</th><th>Note</th></tr></thead>
       <tbody>${rows || '<tr><td colspan="6" style="text-align:center;color:#6F7977">No history recorded</td></tr>'}</tbody>
