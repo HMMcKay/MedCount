@@ -63,6 +63,12 @@ export async function getAllDoses() {
   return db.doses.orderBy('timestamp').reverse().toArray();
 }
 
+export async function getDosesToday() {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  return db.doses.where('timestamp').aboveOrEqual(start.getTime()).toArray();
+}
+
 // ── Settings ─────────────────────────────────────────────────────────────────
 
 export async function getSetting(key, fallback = null) {

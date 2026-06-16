@@ -1,4 +1,4 @@
-const CACHE = 'medcount-v1.0.0';
+const CACHE = 'medcount-v2.0.0';
 const PRECACHE = [
   '/',
   '/static/manifest.json',
@@ -7,6 +7,8 @@ const PRECACHE = [
   '/static/js/crypto.js',
   '/static/js/history.js',
   '/static/js/reminders.js',
+  '/static/js/stats.js',
+  '/static/js/today.js',
   '/static/js/app.js',
 ];
 
@@ -73,8 +75,7 @@ self.addEventListener('message', e => {
   if (e.data?.type === 'SHOW_NOTIFICATION') {
     const { title, body, tag, data } = e.data;
     self.registration.showNotification(title, {
-      body,
-      tag,
+      body, tag,
       icon: '/static/icon-192.png',
       badge: '/static/icon-192.png',
       data: data || {},
