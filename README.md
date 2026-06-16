@@ -1,7 +1,7 @@
 <img width="1774" height="887" alt="project-lead-image" src="https://github.com/user-attachments/assets/8d6bf34d-7990-4863-89b1-94225c4d63a5" />
 
-# 💊 MedCount
-### by: Justin McKay 
+# 💊 MedCount - Justin McKay
+--- 
 
 **A privacy-first medication tracker that lives entirely on your phone.**
 
