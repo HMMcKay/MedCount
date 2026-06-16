@@ -1,4 +1,4 @@
-const CACHE = 'medcount-v2.0.0';
+const CACHE = 'medcount-v2.1.0';
 const PRECACHE = [
   '/',
   '/static/manifest.json',
@@ -9,6 +9,7 @@ const PRECACHE = [
   '/static/js/reminders.js',
   '/static/js/stats.js',
   '/static/js/today.js',
+  '/static/js/icons.js',
   '/static/js/app.js',
 ];
 

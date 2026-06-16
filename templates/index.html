@@ -17,7 +17,6 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
-  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet">
 
   <script type="module">
     import 'https://esm.sh/@material/web@1.5.1/all.js';
@@ -29,16 +28,18 @@
 </head>
 <body>
 
+{% include "_icon_sprite.html" %}
+
 <!-- ── PIN lock screen ──────────────────────────────────────────────────────── -->
 <div id="pin-screen" hidden>
-  <md-icon class="pin-logo">medication</md-icon>
+  <svg class="ic pin-logo" aria-hidden="true"><use href="#i-medication"></use></svg>
   <h1 class="pin-title">MedCount</h1>
   <p class="pin-subtitle">Enter your PIN to unlock</p>
   <input id="pin-input" type="password" inputmode="numeric" maxlength="12"
     autocomplete="current-password" placeholder="••••">
   <p class="pin-error" id="pin-error" hidden>Incorrect PIN. Try again.</p>
   <md-filled-button id="btn-pin-submit">
-    <md-icon slot="icon">lock_open</md-icon>
+    <svg class="ic" slot="icon" aria-hidden="true"><use href="#i-lock_open"></use></svg>
     Unlock
   </md-filled-button>
 </div>
@@ -51,32 +52,32 @@
     <h1 class="app-bar-title"><span>Med</span>Count</h1>
     <div class="sort-anchor" id="sort-anchor">
       <md-icon-button id="btn-sort" aria-label="Sort medications">
-        <md-icon>sort</md-icon>
+        <svg class="ic" aria-hidden="true"><use href="#i-sort"></use></svg>
       </md-icon-button>
       <md-menu id="sort-menu">
         <md-menu-item data-sort="name">
-          <md-icon slot="start">sort_by_alpha</md-icon>
+          <svg class="ic" slot="start" aria-hidden="true"><use href="#i-sort_by_alpha"></use></svg>
           <div slot="headline">Name (A → Z)</div>
         </md-menu-item>
         <md-menu-item data-sort="quantity">
-          <md-icon slot="start">expand_more</md-icon>
+          <svg class="ic" slot="start" aria-hidden="true"><use href="#i-expand_more"></use></svg>
           <div slot="headline">Quantity (low → high)</div>
         </md-menu-item>
         <md-menu-item data-sort="refillDate">
-          <md-icon slot="start">calendar_today</md-icon>
+          <svg class="ic" slot="start" aria-hidden="true"><use href="#i-calendar_today"></use></svg>
           <div slot="headline">Refill date (soonest)</div>
         </md-menu-item>
         <md-menu-item data-sort="supply">
-          <md-icon slot="start">hourglass_bottom</md-icon>
+          <svg class="ic" slot="start" aria-hidden="true"><use href="#i-hourglass_bottom"></use></svg>
           <div slot="headline">Supply (fewest days)</div>
         </md-menu-item>
       </md-menu>
     </div>
     <md-icon-button id="btn-search" aria-label="Search medications">
-      <md-icon>search</md-icon>
+      <svg class="ic" aria-hidden="true"><use href="#i-search"></use></svg>
     </md-icon-button>
     <md-icon-button id="btn-settings" aria-label="Settings">
-      <md-icon>settings</md-icon>
+      <svg class="ic" aria-hidden="true"><use href="#i-settings"></use></svg>
     </md-icon-button>
   </header>
 
@@ -85,10 +86,10 @@
     <!-- Search bar -->
     <div id="search-bar" class="search-bar" hidden>
       <div class="search-inner">
-        <md-icon class="search-icon">search</md-icon>
+        <svg class="ic search-icon" aria-hidden="true"><use href="#i-search"></use></svg>
         <input id="search-input" class="search-input" type="search" placeholder="Search medications…" autocomplete="off">
         <md-icon-button id="btn-search-close" aria-label="Close search">
-          <md-icon>close</md-icon>
+          <svg class="ic" aria-hidden="true"><use href="#i-close"></use></svg>
         </md-icon-button>
       </div>
     </div>
@@ -101,7 +102,7 @@
 
     <!-- Empty state -->
     <div id="empty-state" class="empty-state" hidden>
-      <md-icon class="empty-icon">medication</md-icon>
+      <svg class="ic empty-icon" aria-hidden="true"><use href="#i-medication"></use></svg>
       <h2 class="empty-title">No medications yet</h2>
       <p class="empty-sub">Tap the + button to add your first medication</p>
     </div>
@@ -120,7 +121,7 @@
   <!-- FAB: Add medication -->
   <div class="fab-container" id="fab-container">
     <md-fab id="fab-add" size="large" aria-label="Add medication">
-      <md-icon slot="icon">add</md-icon>
+      <svg class="ic" slot="icon" aria-hidden="true"><use href="#i-add"></use></svg>
     </md-fab>
   </div>
 
@@ -128,17 +129,17 @@
   <nav class="bottom-nav" aria-label="Main navigation">
     <button class="nav-item active" data-tab="home" aria-label="Medications">
       <div class="nav-indicator"></div>
-      <md-icon class="nav-icon">medication</md-icon>
+      <svg class="ic nav-icon" aria-hidden="true"><use href="#i-medication"></use></svg>
       <span class="nav-label">Meds</span>
     </button>
     <button class="nav-item" data-tab="today" aria-label="Today">
       <div class="nav-indicator"></div>
-      <md-icon class="nav-icon">today</md-icon>
+      <svg class="ic nav-icon" aria-hidden="true"><use href="#i-today"></use></svg>
       <span class="nav-label">Today</span>
     </button>
     <button class="nav-item" data-tab="stats" aria-label="Statistics">
       <div class="nav-indicator"></div>
-      <md-icon class="nav-icon">insights</md-icon>
+      <svg class="ic nav-icon" aria-hidden="true"><use href="#i-insights"></use></svg>
       <span class="nav-label">Stats</span>
     </button>
   </nav>
@@ -153,17 +154,17 @@
 
   <header class="hist-header">
     <md-icon-button id="btn-hist-back" aria-label="Back to medications">
-      <md-icon>arrow_back</md-icon>
+      <svg class="ic" aria-hidden="true"><use href="#i-arrow_back"></use></svg>
     </md-icon-button>
     <div class="hist-header-text">
       <h1 id="hist-page-title" class="hist-page-title"></h1>
       <p id="hist-page-sub" class="hist-page-sub"></p>
     </div>
     <md-icon-button id="btn-hist-print" aria-label="Print history">
-      <md-icon>print</md-icon>
+      <svg class="ic" aria-hidden="true"><use href="#i-print"></use></svg>
     </md-icon-button>
     <md-icon-button id="btn-hist-export" aria-label="Export data">
-      <md-icon>download</md-icon>
+      <svg class="ic" aria-hidden="true"><use href="#i-download"></use></svg>
     </md-icon-button>
   </header>
 
@@ -263,7 +264,7 @@
     <details class="form-section collapsible">
       <summary class="form-section-summary">
         <p class="form-section-title" style="margin:0">Prescription Details</p>
-        <md-icon class="expand-icon">expand_more</md-icon>
+        <svg class="ic expand-icon" aria-hidden="true"><use href="#i-expand_more"></use></svg>
       </summary>
       <div class="details-content">
         <div class="form-row-2">
@@ -290,7 +291,7 @@
     <details class="form-section collapsible">
       <summary class="form-section-summary">
         <p class="form-section-title" style="margin:0">Reminders &amp; Alerts</p>
-        <md-icon class="expand-icon">expand_more</md-icon>
+        <svg class="ic expand-icon" aria-hidden="true"><use href="#i-expand_more"></use></svg>
       </summary>
       <div class="details-content">
 
@@ -301,7 +302,7 @@
               <p style="margin:2px 0 0;font-size:12px;color:var(--md-sys-color-on-surface-variant)">Notify at scheduled times</p>
             </div>
             <md-text-button id="btn-add-reminder">
-              <md-icon slot="icon">add_alarm</md-icon>
+              <svg class="ic" slot="icon" aria-hidden="true"><use href="#i-add_alarm"></use></svg>
               Add time
             </md-text-button>
           </div>
@@ -340,7 +341,7 @@
   <div slot="actions">
     <md-text-button id="btn-med-cancel">Cancel</md-text-button>
     <md-filled-button id="btn-med-save">
-      <md-icon slot="icon">save</md-icon>
+      <svg class="ic" slot="icon" aria-hidden="true"><use href="#i-save"></use></svg>
       Save
     </md-filled-button>
   </div>
@@ -352,7 +353,7 @@
 ──────────────────────────────────────────────────────────────────────────────── -->
 <md-dialog id="refill-dialog">
   <span slot="headline">
-    <md-icon style="vertical-align:middle;margin-right:8px">local_pharmacy</md-icon>
+    <svg class="ic" style="vertical-align:middle;margin-right:8px" aria-hidden="true"><use href="#i-local_pharmacy"></use></svg>
     Log Refill
   </span>
 
@@ -368,7 +369,7 @@
   <div slot="actions">
     <md-text-button id="btn-refill-cancel">Cancel</md-text-button>
     <md-filled-button id="btn-refill-confirm">
-      <md-icon slot="icon">local_pharmacy</md-icon>
+      <svg class="ic" slot="icon" aria-hidden="true"><use href="#i-local_pharmacy"></use></svg>
       Log Refill
     </md-filled-button>
   </div>
@@ -388,7 +389,7 @@
     <md-text-button id="btn-delete-cancel">Cancel</md-text-button>
     <md-filled-button id="btn-delete-confirm"
       style="--md-filled-button-container-color:var(--md-sys-color-error);--md-filled-button-label-text-color:var(--md-sys-color-on-error)">
-      <md-icon slot="icon">delete</md-icon>
+      <svg class="ic" slot="icon" aria-hidden="true"><use href="#i-delete"></use></svg>
       Delete
     </md-filled-button>
   </div>
@@ -400,7 +401,7 @@
 ──────────────────────────────────────────────────────────────────────────────── -->
 <md-dialog id="settings-dialog">
   <span slot="headline">
-    <md-icon style="vertical-align:middle;margin-right:8px">settings</md-icon>
+    <svg class="ic" style="vertical-align:middle;margin-right:8px" aria-hidden="true"><use href="#i-settings"></use></svg>
     Settings
   </span>
 
@@ -439,11 +440,11 @@
     <p class="settings-section-title">Data</p>
     <div class="settings-row" style="flex-direction:column;align-items:flex-start;gap:8px">
       <md-outlined-button id="btn-export" style="width:100%">
-        <md-icon slot="icon">download</md-icon>
+        <svg class="ic" slot="icon" aria-hidden="true"><use href="#i-download"></use></svg>
         Export all data (JSON)
       </md-outlined-button>
       <md-outlined-button id="btn-import" style="width:100%">
-        <md-icon slot="icon">upload</md-icon>
+        <svg class="ic" slot="icon" aria-hidden="true"><use href="#i-upload"></use></svg>
         Import data
       </md-outlined-button>
       <input type="file" id="import-file" accept=".json" hidden>
@@ -451,7 +452,7 @@
 
     <p class="settings-section-title">About</p>
     <div class="settings-row" style="flex-direction:column;align-items:flex-start">
-      <div class="settings-label">MedCount v1.0</div>
+      <div class="settings-label">MedCount v2.1</div>
       <div class="settings-desc">Local-first · Offline-capable · All data stays on your device</div>
     </div>
 
@@ -460,8 +461,28 @@
   <div slot="actions">
     <md-text-button id="btn-settings-close">Cancel</md-text-button>
     <md-filled-button id="btn-settings-save">
-      <md-icon slot="icon">check</md-icon>
+      <svg class="ic" slot="icon" aria-hidden="true"><use href="#i-check"></use></svg>
       Save
+    </md-filled-button>
+  </div>
+</md-dialog>
+
+<!-- ── Set-PIN dialog (enable encryption) ──────────────────────────────────────── -->
+<md-dialog id="pin-set-dialog">
+  <div slot="headline">Set an encryption PIN</div>
+  <form slot="content" method="dialog" class="pin-set-form">
+    <p class="pin-set-help">Your data will be encrypted on this device. The PIN is never stored — if you forget it, your data can't be recovered.</p>
+    <input id="pin-set-input" class="pin-set-field" type="password" inputmode="numeric"
+      maxlength="12" autocomplete="new-password" placeholder="Enter PIN (min 4 digits)">
+    <input id="pin-set-confirm" class="pin-set-field" type="password" inputmode="numeric"
+      maxlength="12" autocomplete="new-password" placeholder="Confirm PIN">
+    <p class="pin-set-error" id="pin-set-error" hidden></p>
+  </form>
+  <div slot="actions">
+    <md-text-button id="btn-pin-set-cancel">Cancel</md-text-button>
+    <md-filled-button id="btn-pin-set-confirm">
+      <svg class="ic" slot="icon" aria-hidden="true"><use href="#i-lock_open"></use></svg>
+      Enable
     </md-filled-button>
   </div>
 </md-dialog>

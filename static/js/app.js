@@ -7,6 +7,7 @@ import { initReminders, stopReminders, requestNotificationPermission,
          notificationsGranted, checkAndFireReminders } from './reminders.js';
 import { renderStats } from './stats.js';
 import { renderToday } from './today.js';
+import { ic } from './icons.js';
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let medications       = [];
@@ -239,28 +240,15 @@ function cardHTML(med) {
         </div>
       </div>
       <div class="card-menu-anchor">
-        <md-icon-button class="card-menu-btn" aria-label="Options">
-          <md-icon>more_vert</md-icon>
-        </md-icon-button>
-        <md-menu class="card-menu">
-          <md-menu-item data-action="edit">
-            <md-icon slot="start">edit</md-icon>
-            <div slot="headline">Edit medication</div>
-          </md-menu-item>
-          <md-menu-item data-action="history">
-            <md-icon slot="start">history</md-icon>
-            <div slot="headline">Dose history</div>
-          </md-menu-item>
-          <md-menu-item data-action="refill">
-            <md-icon slot="start">local_pharmacy</md-icon>
-            <div slot="headline">Log refill</div>
-          </md-menu-item>
-          <md-divider></md-divider>
-          <md-menu-item data-action="delete" class="danger-item">
-            <md-icon slot="start">delete_outline</md-icon>
-            <div slot="headline">Delete</div>
-          </md-menu-item>
-        </md-menu>
+        <button type="button" class="card-menu-btn" aria-label="Options" aria-haspopup="menu">
+          ${ic('more_vert')}
+        </button>
+        <div class="card-menu" role="menu">
+          <button type="button" class="card-menu-item" data-action="edit" role="menuitem">${ic('edit')}<span>Edit</span></button>
+          <button type="button" class="card-menu-item" data-action="history" role="menuitem">${ic('history')}<span>History</span></button>
+          <button type="button" class="card-menu-item" data-action="refill" role="menuitem">${ic('local_pharmacy')}<span>Refill</span></button>
+          <button type="button" class="card-menu-item card-menu-item--danger" data-action="delete" role="menuitem">${ic('delete_outline')}<span>Delete</span></button>
+        </div>
       </div>
     </div>
 
@@ -272,21 +260,21 @@ function cardHTML(med) {
     </div>
 
     ${supplyD !== null ? `<p class="card-supply ${supplyD <= 7 ? 'supply-critical' : supplyD <= 14 ? 'supply-low' : ''}">
-      <md-icon>hourglass_bottom</md-icon> ~${supplyD} day${supplyD !== 1 ? 's' : ''} supply</p>` : ''}
+      <svg class="ic" aria-hidden="true"><use href="#i-hourglass_bottom"></use></svg> ~${supplyD} day${supplyD !== 1 ? 's' : ''} supply</p>` : ''}
 
     <div class="card-badges">${refillBadge}${isLow ? '<span class="badge badge-warn">Low stock</span>' : ''}</div>
 
-    ${med.fillDate   ? `<p class="card-meta"><md-icon>calendar_today</md-icon> Filled ${formatDate(med.fillDate)}</p>` : ''}
-    ${lastTakenStr   ? `<p class="card-meta"><md-icon>schedule</md-icon> Last taken ${lastTakenStr}</p>` : ''}
-    ${med.sig        ? `<p class="card-meta card-sig"><md-icon>receipt</md-icon> ${esc(med.sig)}</p>` : ''}
+    ${med.fillDate   ? `<p class="card-meta"><svg class="ic" aria-hidden="true"><use href="#i-calendar_today"></use></svg> Filled ${formatDate(med.fillDate)}</p>` : ''}
+    ${lastTakenStr   ? `<p class="card-meta"><svg class="ic" aria-hidden="true"><use href="#i-schedule"></use></svg> Last taken ${lastTakenStr}</p>` : ''}
+    ${med.sig        ? `<p class="card-meta card-sig"><svg class="ic" aria-hidden="true"><use href="#i-receipt"></use></svg> ${esc(med.sig)}</p>` : ''}
 
     <div class="card-actions">
       <md-filled-button class="btn-take" data-med-id="${med.id}" ?disabled="${(med.quantity ?? 0) <= 0}">
-        <md-icon slot="icon">remove</md-icon>
+        <svg class="ic" slot="icon" aria-hidden="true"><use href="#i-remove"></use></svg>
         Take${med.quantityPerDose > 1 ? ` (${med.quantityPerDose})` : ''}
       </md-filled-button>
       <md-tonal-icon-button class="btn-add-one" data-med-id="${med.id}" aria-label="Add one back">
-        <md-icon>add</md-icon>
+        <svg class="ic" aria-hidden="true"><use href="#i-add"></use></svg>
       </md-tonal-icon-button>
     </div>
   </article>`;
@@ -300,9 +288,16 @@ function attachCardEvents(el) {
   const menuBtn = el.querySelector('.card-menu-btn');
   const menu    = el.querySelector('.card-menu');
   if (menuBtn && menu) {
-    menuBtn.addEventListener('click', e => { e.stopPropagation(); menu.open = !menu.open; });
-    menu.querySelectorAll('md-menu-item').forEach(item => {
-      item.addEventListener('click', () => {
+    menuBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      const wasOpen = menu.classList.contains('open');
+      closeAllCardMenus();
+      if (!wasOpen) menu.classList.add('open');
+    });
+    menu.querySelectorAll('.card-menu-item').forEach(item => {
+      item.addEventListener('click', e => {
+        e.stopPropagation();
+        closeAllCardMenus();
         const action = item.dataset.action;
         if (action === 'edit')    openMedDialog(medId);
         if (action === 'history') openHistoryPage(medId);
@@ -311,6 +306,10 @@ function attachCardEvents(el) {
       });
     });
   }
+}
+
+function closeAllCardMenus() {
+  document.querySelectorAll('.card-menu.open').forEach(m => m.classList.remove('open'));
 }
 
 // ── Filter chips ──────────────────────────────────────────────────────────────
@@ -383,7 +382,7 @@ function updateCardQty(medId, newQty, med) {
   if (supplyEl) {
     const sd = supplyDays({ ...med, quantity: newQty });
     if (sd !== null) {
-      supplyEl.innerHTML = `<md-icon>hourglass_bottom</md-icon> ~${sd} day${sd !== 1 ? 's' : ''} supply`;
+      supplyEl.innerHTML = `<svg class="ic" aria-hidden="true"><use href="#i-hourglass_bottom"></use></svg> ~${sd} day${sd !== 1 ? 's' : ''} supply`;
       supplyEl.className = `card-supply ${sd <= 7 ? 'supply-critical' : sd <= 14 ? 'supply-low' : ''}`;
     }
   }
@@ -548,7 +547,7 @@ function addReminderRow(time = '08:00', days = [0,1,2,3,4,5,6]) {
         </label>`).join('')}
     </div>
     <md-icon-button class="btn-remove-reminder" aria-label="Remove">
-      <md-icon>close</md-icon>
+      <svg class="ic" aria-hidden="true"><use href="#i-close"></use></svg>
     </md-icon-button>`;
   row.querySelector('.btn-remove-reminder').addEventListener('click', () => row.remove());
   list.appendChild(row);
@@ -749,7 +748,7 @@ function buildDoseCardHTML(med, dose, allDoses) {
         <span class="dose-secondary">${dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}&thinsp;·&thinsp;${dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
         ${(med.strength || med.form) ? `<span class="dose-tertiary">${[esc(med.strength), esc(med.form)].filter(Boolean).join(' · ')}</span>` : ''}
       </div>
-      <md-icon class="dose-chevron">expand_more</md-icon>
+      <svg class="ic dose-chevron" aria-hidden="true"><use href="#i-expand_more"></use></svg>
     </div>
     <div class="dose-card-body">
       ${buildExpandedBody(med, dose, deltaStr, dColor, allDoses)}
@@ -863,29 +862,59 @@ async function saveSettings() {
   await setSetting('theme', theme);
   applyTheme(theme);
 
+  if (document.getElementById('settings-notif-switch')?.selected && !notificationsGranted()) {
+    await requestNotificationPermission();
+  }
+
   if (encOn && !curEnc) {
-    const pin = prompt('Set a PIN for encryption (minimum 4 digits):');
-    if (!pin || pin.length < 4) { showToast('PIN too short — encryption not enabled', 'error'); return; }
-    const confirm = prompt('Confirm PIN:');
-    if (pin !== confirm) { showToast('PINs do not match', 'error'); return; }
-    const { key, saltHex, ivHex, verifyHex } = await setupEncryption(pin);
-    encKey = key;
-    await setSetting('encryptionEnabled', true);
-    await setSetting('encSalt',   saltHex);
-    await setSetting('encIv',     ivHex);
-    await setSetting('encVerify', verifyHex);
-    showToast('Encryption enabled');
+    // Defer to the PIN dialog to capture and confirm a PIN.
+    document.getElementById('settings-dialog').close();
+    openPinSetDialog();
+    return;
   } else if (!encOn && curEnc) {
     await setSetting('encryptionEnabled', false);
     encKey = null;
     showToast('Encryption disabled');
   }
 
-  if (document.getElementById('settings-notif-switch')?.selected && !notificationsGranted()) {
-    await requestNotificationPermission();
-  }
-
   document.getElementById('settings-dialog').close();
+}
+
+// ── PIN setup dialog (replaces blocking prompt() calls) ─────────────────────────
+function openPinSetDialog() {
+  const dlg = document.getElementById('pin-set-dialog');
+  document.getElementById('pin-set-input').value = '';
+  document.getElementById('pin-set-confirm').value = '';
+  document.getElementById('pin-set-error').hidden = true;
+  dlg.show();
+  setTimeout(() => document.getElementById('pin-set-input').focus(), 100);
+}
+
+async function confirmPinSet() {
+  const pin     = document.getElementById('pin-set-input').value;
+  const confirm = document.getElementById('pin-set-confirm').value;
+  const errEl   = document.getElementById('pin-set-error');
+
+  const fail = msg => { errEl.textContent = msg; errEl.hidden = false; };
+
+  if (!pin || pin.length < 4) return fail('PIN must be at least 4 digits.');
+  if (pin !== confirm)        return fail('PINs do not match.');
+
+  const { key, saltHex, ivHex, verifyHex } = await setupEncryption(pin);
+  encKey = key;
+  await setSetting('encryptionEnabled', true);
+  await setSetting('encSalt',   saltHex);
+  await setSetting('encIv',     ivHex);
+  await setSetting('encVerify', verifyHex);
+  document.getElementById('pin-set-dialog').close();
+  showToast('Encryption enabled');
+}
+
+function cancelPinSet() {
+  document.getElementById('pin-set-dialog').close();
+  const sw = document.getElementById('settings-enc-switch');
+  if (sw) sw.selected = false;
+  showToast('Encryption not enabled', 'error');
 }
 
 // ── PIN screen ────────────────────────────────────────────────────────────────
@@ -985,6 +1014,9 @@ function bindEvents() {
   if (_eventsBound) return;
   _eventsBound = true;
 
+  // Close any open card menu when clicking elsewhere
+  document.addEventListener('click', closeAllCardMenus);
+
   // FAB
   document.getElementById('fab-add').addEventListener('click', () => openMedDialog());
 
@@ -1072,6 +1104,11 @@ function bindEvents() {
   // Settings dialog
   document.getElementById('btn-settings-save').addEventListener('click', saveSettings);
   document.getElementById('btn-settings-close').addEventListener('click', () => document.getElementById('settings-dialog').close());
+
+  // PIN setup dialog
+  document.getElementById('btn-pin-set-confirm').addEventListener('click', confirmPinSet);
+  document.getElementById('btn-pin-set-cancel').addEventListener('click', cancelPinSet);
+  document.getElementById('pin-set-confirm').addEventListener('keydown', e => { if (e.key === 'Enter') confirmPinSet(); });
 
   // Export / import
   document.getElementById('btn-export').addEventListener('click', exportAllData);

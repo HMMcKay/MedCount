@@ -44,13 +44,13 @@ export async function renderToday(container, meds, onTake) {
   const dateStr = now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 
   let html = `<div class="today-date-header">
-    <md-icon class="today-date-icon">today</md-icon>
+    <svg class="ic today-date-icon" aria-hidden="true"><use href="#i-today"></use></svg>
     <span>${dateStr}</span>
   </div>`;
 
   if (meds.length === 0) {
     html += `<div class="today-empty">
-      <md-icon>medication</md-icon>
+      <svg class="ic" aria-hidden="true"><use href="#i-medication"></use></svg>
       <p>No medications added yet.</p>
       <p>Tap + to add your first medication.</p>
     </div>`;
@@ -70,7 +70,7 @@ export async function renderToday(container, meds, onTake) {
 
     html += `<div class="today-slot">
       <div class="today-slot-header">
-        <md-icon class="today-slot-icon">${groupIcon}</md-icon>
+        <svg class="ic today-slot-icon" aria-hidden="true"><use href="#i-${groupIcon}"></use></svg>
         <span class="today-slot-time">${timeLabel}</span>
         <span class="today-slot-period">${groupLabel}</span>
         ${isPast ? '<span class="today-slot-past">past</span>' : ''}
@@ -89,7 +89,7 @@ export async function renderToday(container, meds, onTake) {
   if (unscheduled.length > 0) {
     html += `<div class="today-slot">
       <div class="today-slot-header">
-        <md-icon class="today-slot-icon">all_inclusive</md-icon>
+        <svg class="ic today-slot-icon" aria-hidden="true"><use href="#i-all_inclusive"></use></svg>
         <span class="today-slot-time">As needed</span>
         <span class="today-slot-period">PRN / unscheduled</span>
       </div>`;
@@ -131,7 +131,7 @@ function buildMedItem(med, taken, medId) {
   const sub    = [med.strength, med.form].filter(Boolean).join(' · ');
   return `<div class="today-med-item ${taken ? 'today-taken' : qty <= 0 ? 'today-empty-qty' : ''}">
     <div class="today-check ${taken ? 'today-check--done' : ''}" style="${taken ? '' : `--check-color:${accent}`}">
-      ${taken ? '<md-icon>check</md-icon>' : ''}
+      ${taken ? '<svg class="ic" aria-hidden="true"><use href="#i-check"></use></svg>' : ''}
     </div>
     <div class="today-med-info">
       <div class="today-med-name">${esc(med.name)}</div>
@@ -140,7 +140,7 @@ function buildMedItem(med, taken, medId) {
     ${taken
       ? `<span class="today-taken-label">Taken</span>`
       : `<md-filled-tonal-button class="today-take-btn" data-med-id="${medId}" ${qty <= 0 ? 'disabled' : ''}>
-          <md-icon slot="icon">remove</md-icon>
+          <svg class="ic" slot="icon" aria-hidden="true"><use href="#i-remove"></use></svg>
           Take
         </md-filled-tonal-button>`
     }

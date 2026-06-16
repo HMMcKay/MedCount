@@ -1250,3 +1250,117 @@ details[open] .details-content {
 .hist-mini-remaining   { font-weight: 700; color: #0061A4; text-decoration: underline; text-underline-offset: 2px; text-align: center; }
 .hist-mini-label       { color: var(--md-sys-color-on-surface); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hist-mini-time        { color: var(--md-sys-color-on-surface-variant); text-align: right; white-space: nowrap; }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   SELF-HOSTED ICONS (inline SVG sprite) + ROBUST CARD MENU + PIN DIALOG
+═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Base icon — sized by width/height (SVG), colored via currentColor */
+.ic {
+  width: 20px;
+  height: 20px;
+  display: inline-block;
+  vertical-align: middle;
+  flex: none;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Per-context sizes (replace the old Material Symbols font-size rules) */
+.search-icon       { width: 20px; height: 20px; }
+.card-supply .ic   { width: 14px; height: 14px; }
+.card-meta .ic     { width: 14px; height: 14px; }
+.nav-icon          { width: 24px; height: 24px; }
+.empty-icon        { width: 72px; height: 72px; }
+.expand-icon       { width: 20px; height: 20px; }
+.pin-logo          { width: 64px; height: 64px; }
+.today-date-icon   { width: 20px; height: 20px; }
+.today-slot-icon   { width: 18px; height: 18px; }
+.today-check .ic   { width: 18px; height: 18px; }
+.today-empty .ic   { width: 48px; height: 48px; opacity: .4; }
+.stat-tile-icon    { width: 22px; height: 22px; }
+.dose-chevron      { width: 20px; height: 20px; }
+
+/* Robust card overflow menu — plain HTML, no dependency on web components */
+.card-menu-anchor { position: relative; }
+
+.card-menu-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--md-sys-color-on-surface-variant);
+  -webkit-tap-highlight-color: transparent;
+  transition: background .15s;
+}
+.card-menu-btn:hover { background: var(--md-sys-color-surface-variant); }
+.card-menu-btn .ic   { width: 22px; height: 22px; }
+
+.card-menu {
+  position: absolute;
+  top: 40px;
+  right: 0;
+  z-index: 30;
+  min-width: 156px;
+  padding: 6px;
+  background: var(--md-sys-color-surface-container-high);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 14px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .2);
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  animation: card-menu-in .12s ease;
+}
+.card-menu.open { display: flex; }
+
+@keyframes card-menu-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.card-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 10px 12px;
+  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--md-sys-color-on-surface);
+  text-align: left;
+}
+.card-menu-item:hover { background: var(--md-sys-color-surface-variant); }
+.card-menu-item .ic   { width: 20px; height: 20px; color: var(--md-sys-color-on-surface-variant); }
+.card-menu-item--danger,
+.card-menu-item--danger .ic { color: var(--md-sys-color-error); }
+
+/* Set-PIN dialog */
+.pin-set-form { display: flex; flex-direction: column; gap: 14px; }
+.pin-set-help { font-size: 13px; line-height: 1.4; color: var(--md-sys-color-on-surface-variant); margin: 0; }
+.pin-set-field {
+  font-size: 18px;
+  letter-spacing: 4px;
+  text-align: center;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--md-sys-color-outline);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  font-family: inherit;
+}
+.pin-set-field:focus { outline: 2px solid var(--md-sys-color-primary); border-color: transparent; }
+.pin-set-error { color: var(--md-sys-color-error); font-size: 13px; margin: 0; }

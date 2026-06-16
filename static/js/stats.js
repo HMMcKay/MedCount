@@ -90,22 +90,22 @@ export async function renderStats(container, meds) {
 
     <div class="stat-tiles">
       <div class="stat-tile">
-        <md-icon class="stat-tile-icon">medication</md-icon>
+        <svg class="ic stat-tile-icon" aria-hidden="true"><use href="#i-medication"></use></svg>
         <div class="stat-tile-value">${meds.length}</div>
         <div class="stat-tile-label">Medications</div>
       </div>
       <div class="stat-tile ${takesToday > 0 ? 'stat-tile-good' : ''}">
-        <md-icon class="stat-tile-icon">check_circle</md-icon>
+        <svg class="ic stat-tile-icon" aria-hidden="true"><use href="#i-check_circle"></use></svg>
         <div class="stat-tile-value ${takesToday > 0 ? 'stat-val-good' : ''}">${takesToday}</div>
         <div class="stat-tile-label">Taken today</div>
       </div>
       <div class="stat-tile ${lowStock > 0 ? 'stat-tile-warn' : ''}">
-        <md-icon class="stat-tile-icon">inventory</md-icon>
+        <svg class="ic stat-tile-icon" aria-hidden="true"><use href="#i-inventory"></use></svg>
         <div class="stat-tile-value ${lowStock > 0 ? 'stat-val-warn' : ''}">${lowStock}</div>
         <div class="stat-tile-label">Low stock</div>
       </div>
       <div class="stat-tile ${refillSoon > 0 ? 'stat-tile-warn' : ''}">
-        <md-icon class="stat-tile-icon">local_pharmacy</md-icon>
+        <svg class="ic stat-tile-icon" aria-hidden="true"><use href="#i-local_pharmacy"></use></svg>
         <div class="stat-tile-value ${refillSoon > 0 ? 'stat-val-warn' : ''}">${refillSoon}</div>
         <div class="stat-tile-label">Refill soon</div>
       </div>
@@ -166,7 +166,7 @@ export async function renderStats(container, meds) {
     ${expired > 0 ? `
     <div class="stat-card stat-card-error">
       <div class="stat-alert-row">
-        <md-icon>warning</md-icon>
+        <svg class="ic" aria-hidden="true"><use href="#i-warning"></use></svg>
         <span>${expired} medication${expired !== 1 ? 's' : ''} expired — check your medications</span>
       </div>
     </div>` : ''}
