@@ -1020,6 +1020,10 @@ function bindEvents() {
   // FAB
   document.getElementById('fab-add').addEventListener('click', () => openMedDialog());
 
+  // Empty-state onboarding actions
+  document.getElementById('btn-empty-add')?.addEventListener('click', () => openMedDialog());
+  document.getElementById('btn-empty-pin')?.addEventListener('click', () => openPinSetDialog());
+
   // Bottom nav
   document.querySelectorAll('.nav-item').forEach(btn => {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));

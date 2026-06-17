@@ -147,6 +147,9 @@
 /* ── Base ────────────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 html { height: 100%; }
+/* Every element below sets its own `display`, which would otherwise silently
+   win over the browser's default [hidden] rule and make `el.hidden = true` a no-op. */
+[hidden] { display: none !important; }
 body {
   margin: 0;
   font-family: 'Roboto', sans-serif;
@@ -511,6 +514,23 @@ body {
 .empty-icon  { font-size: 72px; opacity: .4; }
 .empty-title { font-size: 20px; font-weight: 500; margin: 0; color: var(--md-sys-color-on-surface); }
 .empty-sub   { font-size: 14px; margin: 0; }
+.empty-pin-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 13px;
+}
+.empty-pin-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 500;
+  color: var(--md-sys-color-primary);
+  text-decoration: underline;
+  cursor: pointer;
+}
 
 /* ── Dialogs ─────────────────────────────────────────────────────────────────── */
 md-dialog {
