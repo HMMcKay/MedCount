@@ -196,6 +196,17 @@
 
   <form id="med-form" slot="content" method="dialog" novalidate>
 
+    <!-- ── Quick add (natural-language autofill) ──────────────────────── -->
+    <div class="form-section quickadd-section">
+      <md-outlined-text-field id="field-quickadd"
+        label="Quick add — try “Seroquel 200mg tab nightly”"
+        autocomplete="off"></md-outlined-text-field>
+      <div id="quickadd-hint" class="quickadd-hint" hidden>
+        <svg class="ic" aria-hidden="true"><use href="#i-search"></use></svg>
+        <span id="quickadd-hint-text"></span>
+      </div>
+    </div>
+
     <!-- ── Basic info ──────────────────────────────────────────────────── -->
     <div class="form-section">
       <div class="ac-wrapper">
@@ -357,6 +368,29 @@
 
 
 <!-- ────────────────────────────────────────────────────────────────────────────
+     CONFIRM GUESSES DIALOG — shown at save time when quick-add filled in any
+     sensitive (tier-2) field the user never reviewed.
+──────────────────────────────────────────────────────────────────────────────── -->
+<md-dialog id="confirm-guess-dialog">
+  <span slot="headline">
+    <svg class="ic" style="vertical-align:middle;margin-right:8px" aria-hidden="true"><use href="#i-warning"></use></svg>
+    Confirm guessed values
+  </span>
+  <div slot="content" style="min-width:280px">
+    <p class="confirm-guess-help">Quick add guessed the values below — they weren't directly stated. Double-check them before saving.</p>
+    <ul id="confirm-guess-list" class="confirm-guess-list"></ul>
+  </div>
+  <div slot="actions">
+    <md-text-button id="btn-confirm-guess-edit">Let me edit</md-text-button>
+    <md-filled-button id="btn-confirm-guess-save">
+      <svg class="ic" slot="icon" aria-hidden="true"><use href="#i-check"></use></svg>
+      Confirm &amp; save
+    </md-filled-button>
+  </div>
+</md-dialog>
+
+
+<!-- ────────────────────────────────────────────────────────────────────────────
      REFILL DIALOG
 ──────────────────────────────────────────────────────────────────────────────── -->
 <md-dialog id="refill-dialog">
@@ -445,6 +479,24 @@
       <md-switch id="settings-enc-switch"></md-switch>
     </div>
 
+    <p class="settings-section-title">Medication Lookup</p>
+    <div class="settings-row">
+      <div>
+        <div class="settings-label">Online lookup fallback</div>
+        <div class="settings-desc">
+          Quick add uses a built-in local database first (covers ~98% of common medications, no network use).
+          When off (default), an unrecognized medication just gets left for you to fill in by hand.
+        </div>
+      </div>
+      <md-switch id="settings-online-switch"></md-switch>
+    </div>
+    <p class="settings-desc online-lookup-example">
+      <strong>May leak:</strong> the medication text you typed (e.g. "Seroquel 200mg") is sent over the network to the NIH's public RxNorm lookup service.<br>
+      <strong>Never sent:</strong> your PIN, dose history, quantities on hand, prescriber/pharmacy info, or any other field.<br>
+      <strong>Returned &amp; used:</strong> only a standardized drug name, form, and strength — to fill the form, nothing more.<br>
+      This setting stays as you leave it until you change it again here.
+    </p>
+
     <p class="settings-section-title">Data</p>
     <div class="settings-row" style="flex-direction:column;align-items:flex-start;gap:8px">
       <md-outlined-button id="btn-export" style="width:100%">
@@ -460,7 +512,7 @@
 
     <p class="settings-section-title">About</p>
     <div class="settings-row" style="flex-direction:column;align-items:flex-start">
-      <div class="settings-label">MedCount v2.1</div>
+      <div class="settings-label">MedCount v2.2</div>
       <div class="settings-desc">Local-first · Offline-capable · All data stays on your device</div>
     </div>
 
@@ -491,6 +543,33 @@
     <md-filled-button id="btn-pin-set-confirm">
       <svg class="ic" slot="icon" aria-hidden="true"><use href="#i-lock_open"></use></svg>
       Enable
+    </md-filled-button>
+  </div>
+</md-dialog>
+
+<!-- ── Online lookup disclosure dialog (shown once, the moment this is turned on) ── -->
+<md-dialog id="online-lookup-confirm-dialog">
+  <span slot="headline">
+    <svg class="ic" style="vertical-align:middle;margin-right:8px" aria-hidden="true"><use href="#i-warning"></use></svg>
+    Turn on online lookup?
+  </span>
+  <div slot="content" style="min-width:280px">
+    <p class="pin-set-help">
+      Quick add will start sending the medication text you type to the NIH's public RxNorm lookup service
+      whenever it isn't found in the built-in local database.
+    </p>
+    <p class="pin-set-help">
+      <strong>May leak:</strong> the medication text itself, e.g. "Seroquel 200mg" — sent over the network to RxNorm.<br>
+      <strong>Never sent:</strong> your PIN, dose history, quantities on hand, prescriber/pharmacy info, or any other field.<br>
+      <strong>Returned &amp; used:</strong> only a standardized drug name, form, and strength, to fill the form.
+    </p>
+    <p class="pin-set-help">This stays on until you turn it back off here in Settings.</p>
+  </div>
+  <div slot="actions">
+    <md-text-button id="btn-online-lookup-cancel">Cancel</md-text-button>
+    <md-filled-button id="btn-online-lookup-confirm">
+      <svg class="ic" slot="icon" aria-hidden="true"><use href="#i-check"></use></svg>
+      Turn on
     </md-filled-button>
   </div>
 </md-dialog>

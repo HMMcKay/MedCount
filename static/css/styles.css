@@ -41,8 +41,8 @@
   --md-fab-icon-color:                      var(--md-sys-color-on-primary);
   --md-outlined-text-field-focus-outline-color: var(--md-sys-color-primary);
   --md-outlined-text-field-label-text-color: var(--md-sys-color-on-surface-variant);
-  --md-outlined-select-focus-outline-color: var(--md-sys-color-primary);
-  --md-outlined-select-label-text-color:    var(--md-sys-color-on-surface-variant);
+  --md-outlined-select-text-field-focus-outline-color: var(--md-sys-color-primary);
+  --md-outlined-select-text-field-label-text-color:    var(--md-sys-color-on-surface-variant);
   --md-filter-chip-selected-container-color: var(--md-sys-color-secondary-container);
   --md-filter-chip-selected-label-text-color: var(--md-sys-color-on-secondary-container);
   --md-dialog-container-color:              var(--md-sys-color-surface-container-highest);
@@ -600,6 +600,90 @@ details[open] .details-content {
   color: var(--md-sys-color-on-surface);
   margin: 0;
 }
+
+/* ── Quick add ────────────────────────────────────────────────────────────────── */
+.quickadd-section { padding-top: 16px; }
+.quickadd-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.quickadd-hint .ic { flex-shrink: 0; margin-top: 1px; width: 16px; height: 16px; }
+
+/* Inferred-field styling. Applied directly to a field (or, for the dose-
+   schedule guess, the reminder-list container) that quick-add filled in but
+   the user hasn't touched yet; cleared on first focus/edit. Material Web
+   text fields/selects expose their colors as CSS custom properties, so we
+   set those on the host rather than fighting the shadow DOM with overrides. */
+.field-inferred,
+.field-needs-confirm {
+  position: relative;
+  display: block;
+  border-radius: 4px;
+}
+.field-inferred {
+  --md-outlined-text-field-input-text-color: var(--md-sys-color-on-surface-variant);
+  --md-outlined-text-field-outline-color: var(--md-sys-color-outline-variant);
+  --md-outlined-select-text-field-input-text-color: var(--md-sys-color-on-surface-variant);
+  --md-outlined-select-text-field-outline-color: var(--md-sys-color-outline-variant);
+  opacity: .72;
+}
+.field-needs-confirm {
+  --md-outlined-text-field-input-text-color: var(--md-sys-color-on-surface);
+  --md-outlined-text-field-outline-color: var(--md-sys-color-error);
+  --md-outlined-text-field-focus-outline-color: var(--md-sys-color-error);
+  --md-outlined-select-text-field-outline-color: var(--md-sys-color-error);
+  --md-outlined-select-text-field-focus-outline-color: var(--md-sys-color-error);
+}
+.field-inferred::after,
+.field-needs-confirm::after {
+  content: 'guessed';
+  position: absolute;
+  top: -8px;
+  right: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+  pointer-events: none;
+  z-index: 1;
+}
+.field-needs-confirm::after {
+  content: 'needs confirm';
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
+}
+
+/* ── Confirm-guesses dialog ───────────────────────────────────────────────────── */
+.confirm-guess-help { font-size: 13px; line-height: 1.4; color: var(--md-sys-color-on-surface-variant); margin: 0 0 12px; }
+.confirm-guess-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.confirm-guess-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
+  font-size: 14px;
+}
+.confirm-guess-item-label { font-weight: 500; }
+.confirm-guess-item-value { font-weight: 600; text-align: right; }
+
+/* ── Online-lookup settings example text ─────────────────────────────────────── */
+.online-lookup-example { line-height: 1.5; margin: -4px 0 12px; }
 
 /* ── Autocomplete ────────────────────────────────────────────────────────────── */
 .ac-wrapper { position: relative; }

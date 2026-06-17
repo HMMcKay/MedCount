@@ -8,6 +8,8 @@ import { initReminders, stopReminders, requestNotificationPermission,
 import { renderStats } from './stats.js';
 import { renderToday } from './today.js';
 import { ic } from './icons.js';
+import { parseQuickAdd, getAllDisplayNames, lookupByNameOrAlias,
+         searchOnline, mapRxNormResultToParsedFields } from './medParser.js';
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let medications       = [];
@@ -22,6 +24,9 @@ let _pendingDeleteId  = null;
 let _pendingRefillId  = null;
 let _doseReminderCount = 0;
 let _historyMedId     = null;
+let _inferredFields   = new Map(); // fieldKey -> { tier, label, el, onTouch }
+let _quickAddTimer    = null;
+let _pendingSaveData  = null;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CAT_COLORS = {
@@ -44,32 +49,9 @@ const ACCENT_COLORS = [
   { value: '#5A5A5A', label: 'Slate'  },
 ];
 
-const DRUG_NAMES = [
-  'Lisinopril','Atorvastatin','Metoprolol','Amlodipine','Losartan','Metformin',
-  'Hydrochlorothiazide','Furosemide','Carvedilol','Simvastatin','Rosuvastatin',
-  'Ibuprofen','Naproxen','Acetaminophen','Aspirin','Celecoxib','Tramadol',
-  'Gabapentin','Pregabalin','Amoxicillin','Azithromycin','Ciprofloxacin',
-  'Doxycycline','Metronidazole','Trimethoprim','Cephalexin','Clindamycin',
-  'Sertraline','Escitalopram','Fluoxetine','Paroxetine','Venlafaxine',
-  'Duloxetine','Bupropion','Aripiprazole','Quetiapine','Alprazolam',
-  'Lorazepam','Clonazepam','Zolpidem','Trazodone','Buspirone','Mirtazapine',
-  'Glipizide','Glimepiride','Sitagliptin','Empagliflozin','Insulin',
-  'Insulin Glargine','Insulin Aspart','Levothyroxine','Liothyronine',
-  'Albuterol','Fluticasone','Montelukast','Tiotropium','Budesonide',
-  'Ipratropium','Prednisone','Methylprednisolone','Omeprazole','Pantoprazole',
-  'Esomeprazole','Famotidine','Ondansetron','Loperamide','Bisacodyl','Docusate',
-  'Topiramate','Lamotrigine','Levetiracetam','Valproic Acid','Donepezil',
-  'Memantine','Carbidopa-Levodopa','Estradiol','Progesterone','Testosterone',
-  'Warfarin','Rivaroxaban','Apixaban','Clopidogrel','Tamsulosin','Finasteride',
-  'Oxybutynin','Colchicine','Allopurinol','Hydroxychloroquine','Tacrolimus',
-  'Cetirizine','Loratadine','Fexofenadine','Diphenhydramine','Hydroxyzine',
-  'Latanoprost','Timolol','Triamcinolone','Hydrocortisone','Tretinoin',
-  'Hydrocodone','Oxycodone','Codeine','Morphine','Buprenorphine',
-  'Vitamin D','Vitamin B12','Folic Acid','Iron Sulfate','Calcium Carbonate',
-  'Omega-3 Fish Oil','Magnesium','Zinc','Multivitamin',
-  'Tylenol','Advil','Aleve','Benadryl','Claritin','Zyrtec',
-  'Pepcid','Prilosec','Nexium','Tums','MiraLax','Dulcolax','Imodium',
-];
+// Drug name suggestions (autocomplete + quick-add matching) come from the
+// local medication dataset in medData.js, not a hardcoded list — see medParser.js.
+const DRUG_NAMES = getAllDisplayNames();
 
 const STRENGTHS = ['1mg','2mg','2.5mg','5mg','10mg','12.5mg','20mg','25mg',
   '40mg','50mg','75mg','100mg','150mg','200mg','250mg','300mg','400mg',
@@ -419,10 +401,13 @@ async function openMedDialog(medId = null) {
 
 function resetMedForm() {
   document.getElementById('med-form').reset();
+  document.getElementById('field-quickadd').value = '';
+  document.getElementById('quickadd-hint').hidden = true;
   document.getElementById('dose-reminders-list').innerHTML = '';
   _doseReminderCount = 0;
   document.getElementById('tracking-options').hidden = true;
   document.getElementById('switch-tracking').selected = false;
+  clearAllInferred();
 }
 
 function populateMedForm(med) {
@@ -465,9 +450,7 @@ function populateMedForm(med) {
   }
 }
 
-async function saveMedHandler() {
-  const form = document.getElementById('med-form');
-  if (!form.reportValidity()) return;
+function collectMedFormData() {
   const get = id => { const el = document.getElementById(`field-${id}`); return el ? el.value.trim() : ''; };
   const reminders = buildReminders();
 
@@ -496,15 +479,38 @@ async function saveMedHandler() {
     reminders,
   };
 
-  if (!data.name) { showToast('Medication name is required', 'error'); return; }
-
   if (editingId) {
     const existing = medications.find(m => m.id === editingId);
     if (existing && data.quantity > existing.quantity) data.fillQuantity = data.quantity;
     data.id = editingId;
   }
 
+  return data;
+}
+
+async function saveMedHandler() {
+  const form = document.getElementById('med-form');
+  if (!form.reportValidity()) return;
+
+  const data = collectMedFormData();
+  if (!data.name) { showToast('Medication name is required', 'error'); return; }
+
+  // Quick-add may have left sensitive guesses unreviewed (tier 2 — the user
+  // never touched the field). Gate the save behind an explicit confirmation
+  // listing exactly what's being guessed, per the privacy/accuracy agreement.
+  const pending = buildPendingGuesses();
+  if (pending.length) {
+    _pendingSaveData = data;
+    openConfirmGuessDialog(pending);
+    return;
+  }
+
+  await performMedSave(data);
+}
+
+async function performMedSave(data) {
   await saveMedication(data);
+  document.getElementById('confirm-guess-dialog').close();
   document.getElementById('med-dialog').close();
   medications = await getMedications();
   for (const med of medications) {
@@ -513,7 +519,9 @@ async function saveMedHandler() {
   }
   renderGrid();
   showToast(editingId ? 'Medication updated' : `${data.name} added`);
-  saveAutocompleteHistory(data.prescriber, data.pharmacy);
+  saveAutocompleteHistory(data.prescriber, data.pharmacy, data.prescriberPhone, data.pharmacyPhone);
+  _pendingSaveData = null;
+  clearAllInferred();
 }
 
 function buildReminders() {
@@ -551,6 +559,164 @@ function addReminderRow(time = '08:00', days = [0,1,2,3,4,5,6]) {
     </md-icon-button>`;
   row.querySelector('.btn-remove-reminder').addEventListener('click', () => row.remove());
   list.appendChild(row);
+}
+
+// ── Quick add (natural-language autofill) ───────────────────────────────────
+const QUICKADD_LABELS = {
+  name: 'Medication name', 'generic-name': 'Generic name', category: 'Category',
+  strength: 'Strength', form: 'Form', 'qty-per-dose': 'Qty per dose', unit: 'Unit',
+  quantity: 'Current qty', 'days-supply': 'Days supply', schedule: 'Schedule',
+};
+
+// Flags a field (or, for the dose-schedule guess, a whole container) as
+// quick-add-derived. Tier 1 ("inferred") fields just look greyed-out; tier 2
+// ("needs confirm") fields additionally block save until reviewed — see
+// buildPendingGuesses(). Either tier clears itself the moment the user
+// touches/edits the field, since that counts as having reviewed it.
+function markInferred(key, tier, label, opts = {}) {
+  clearInferred(key);
+  const el = opts.container || document.getElementById(`field-${key}`);
+  if (!el) return;
+
+  el.classList.add(tier === 2 ? 'field-needs-confirm' : 'field-inferred');
+
+  const onTouch = () => clearInferred(key);
+  el.addEventListener('focusin', onTouch, { once: true });
+  el.addEventListener('input',   onTouch, { once: true });
+  el.addEventListener('change',  onTouch, { once: true });
+
+  _inferredFields.set(key, { tier, label, el, onTouch });
+}
+
+function clearInferred(key) {
+  const entry = _inferredFields.get(key);
+  if (!entry) return;
+  entry.el.classList.remove('field-inferred', 'field-needs-confirm');
+  entry.el.removeEventListener('focusin', entry.onTouch);
+  entry.el.removeEventListener('input',   entry.onTouch);
+  entry.el.removeEventListener('change',  entry.onTouch);
+  _inferredFields.delete(key);
+}
+
+function clearAllInferred() {
+  for (const key of Array.from(_inferredFields.keys())) clearInferred(key);
+}
+
+function applyParsedResult(parsed) {
+  clearAllInferred();
+  if (!parsed) return;
+
+  if (!document.getElementById('field-fill-date').value) setField('fill-date', today());
+
+  // Set values first, before any touch-listeners exist — otherwise the
+  // synthetic change events dispatched below would immediately fire the
+  // not-yet-attached markInferred() listeners out from under themselves.
+  for (const [key, value] of Object.entries(parsed.fields)) {
+    const el = document.getElementById(`field-${key}`);
+    if (el) el.value = value;
+  }
+
+  // Let the existing change-handlers (refill-date math, low-stock default)
+  // run now that quick-add has finished populating the fields they read.
+  document.getElementById('field-days-supply')?.dispatchEvent(new Event('change'));
+  document.getElementById('field-qty-per-dose')?.dispatchEvent(new Event('change'));
+
+  for (const key of Object.keys(parsed.fields)) {
+    if (!document.getElementById(`field-${key}`)) continue;
+    markInferred(key, parsed.tiers[key] || 1, QUICKADD_LABELS[key] || key);
+  }
+
+  if (parsed.freq) {
+    document.getElementById('dose-reminders-list').innerHTML = '';
+    _doseReminderCount = 0;
+    for (const alert of (parsed.freq.doseAlerts || [])) addReminderRow(alert.time, alert.days);
+    const remindersDetails = document.getElementById('dose-reminders-list').closest('details.collapsible');
+    if (remindersDetails) remindersDetails.open = true;
+    const scheduleContainer = document.getElementById('dose-reminders-list').closest('.reminder-subsection');
+    if (scheduleContainer) markInferred('schedule', parsed.tiers.schedule || 1, 'Schedule', { container: scheduleContainer });
+  }
+}
+
+function showQuickAddHint(parsed, usedOnline) {
+  const hint = document.getElementById('quickadd-hint');
+  const text = document.getElementById('quickadd-hint-text');
+  if (!parsed || !Object.keys(parsed.fields).length) { hint.hidden = true; return; }
+
+  const parts = [];
+  if (parsed.matchedDrug)    parts.push(`Matched "${parsed.matchedDrug.name}" in the local database`);
+  else if (usedOnline)       parts.push(`No local match — looked up "${parsed.raw}" online`);
+  else                       parts.push(`Couldn't find "${parsed.raw}" — guessed from what you typed`);
+
+  const needsConfirm = Object.values(parsed.tiers).filter(t => t === 2).length;
+  if (needsConfirm > 0) {
+    parts.push(`${needsConfirm} value${needsConfirm > 1 ? 's' : ''} flagged for confirmation before saving`);
+  }
+  text.textContent = parts.join(' · ');
+  hint.hidden = false;
+}
+
+async function handleQuickAddParse() {
+  const input = document.getElementById('field-quickadd');
+  const text  = input?.value.trim();
+  if (!text) { document.getElementById('quickadd-hint').hidden = true; clearAllInferred(); return; }
+
+  let parsed = parseQuickAdd(text);
+  let usedOnline = false;
+
+  if (!parsed?.matchedDrug) {
+    const onlineOn = await getSetting('onlineLookupEnabled', false);
+    if (onlineOn) {
+      try {
+        // RxNorm matches on a bare drug name, not a full free-text phrase —
+        // use the name quick-add already guessed locally (e.g. "Zorbtive"
+        // out of "Zorbtive 8.8mg injection"), falling back to the raw text.
+        const queryName    = parsed?.fields?.name || text;
+        const onlineResult = await searchOnline(queryName);
+        const mapped = mapRxNormResultToParsedFields(onlineResult, queryName);
+        if (mapped) {
+          parsed = parsed || { raw: text, fields: {}, tiers: {}, matchedDrug: null, unmatchedName: true, freq: null };
+          // Fill gaps only — a value already read directly from the typed
+          // text (tier 1) is more trustworthy than RxNorm's parsed product
+          // name and shouldn't be clobbered by it.
+          for (const [k, v] of Object.entries(mapped.fields)) {
+            if (parsed.fields[k] == null) {
+              parsed.fields[k] = v;
+              parsed.tiers[k]  = mapped.tiers[k];
+            }
+          }
+          usedOnline = true;
+        }
+      } catch (e) { console.warn('Online lookup failed:', e); }
+    }
+  }
+
+  if (!parsed) { document.getElementById('quickadd-hint').hidden = true; return; }
+
+  applyParsedResult(parsed);
+  showQuickAddHint(parsed, usedOnline);
+}
+
+function buildPendingGuesses() {
+  return [..._inferredFields.entries()].filter(([, entry]) => entry.tier === 2);
+}
+
+function currentFieldDisplay(key) {
+  if (key === 'schedule') {
+    const times = [...document.querySelectorAll('.reminder-row .reminder-time')].map(t => t.value).filter(Boolean);
+    return times.length ? times.join(', ') : '(no time set)';
+  }
+  const el = document.getElementById(`field-${key}`);
+  return el ? el.value : '';
+}
+
+function openConfirmGuessDialog(pending) {
+  const list = document.getElementById('confirm-guess-list');
+  list.innerHTML = pending.map(([key, entry]) => `
+    <li class="confirm-guess-item">
+      <span class="confirm-guess-item-label">${esc(entry.label)}</span>
+      <span class="confirm-guess-item-value">${esc(currentFieldDisplay(key))}</span>
+    </li>`).join('');
+  document.getElementById('confirm-guess-dialog').show();
 }
 
 // ── Refill dialog ─────────────────────────────────────────────────────────────
@@ -846,24 +1012,40 @@ async function confirmDelete() {
 
 // ── Settings dialog ───────────────────────────────────────────────────────────
 async function openSettingsDialog() {
-  const theme = await getSetting('theme', 'auto');
-  const encOn = await getSetting('encryptionEnabled', false);
+  const theme     = await getSetting('theme', 'auto');
+  const encOn     = await getSetting('encryptionEnabled', false);
+  const onlineOn  = await getSetting('onlineLookupEnabled', false);
   document.getElementById('settings-theme-select').value      = theme;
   document.getElementById('settings-enc-switch').selected     = encOn;
   document.getElementById('settings-notif-switch').selected   = notificationsGranted();
+  const onlineSw = document.getElementById('settings-online-switch');
+  if (onlineSw) onlineSw.selected = onlineOn;
   document.getElementById('settings-dialog').show();
 }
 
 async function saveSettings() {
-  const theme  = document.getElementById('settings-theme-select').value;
-  const encOn  = document.getElementById('settings-enc-switch').selected;
-  const curEnc = await getSetting('encryptionEnabled', false);
+  const theme     = document.getElementById('settings-theme-select').value;
+  const encOn     = document.getElementById('settings-enc-switch').selected;
+  const curEnc    = await getSetting('encryptionEnabled', false);
+  const onlineOn  = document.getElementById('settings-online-switch')?.selected ?? false;
+  const curOnline = await getSetting('onlineLookupEnabled', false);
 
   await setSetting('theme', theme);
   applyTheme(theme);
 
   if (document.getElementById('settings-notif-switch')?.selected && !notificationsGranted()) {
     await requestNotificationPermission();
+  }
+
+  if (onlineOn && !curOnline) {
+    // Defer to the disclosure dialog — the setting isn't persisted until the
+    // user explicitly confirms what may be sent to the online lookup.
+    document.getElementById('settings-dialog').close();
+    openOnlineLookupConfirmDialog();
+    return;
+  } else if (!onlineOn && curOnline) {
+    await setSetting('onlineLookupEnabled', false);
+    showToast('Online lookup disabled');
   }
 
   if (encOn && !curEnc) {
@@ -878,6 +1060,24 @@ async function saveSettings() {
   }
 
   document.getElementById('settings-dialog').close();
+}
+
+// ── Online lookup disclosure dialog ─────────────────────────────────────────
+function openOnlineLookupConfirmDialog() {
+  document.getElementById('online-lookup-confirm-dialog').show();
+}
+
+async function confirmOnlineLookup() {
+  await setSetting('onlineLookupEnabled', true);
+  document.getElementById('online-lookup-confirm-dialog').close();
+  showToast('Online lookup enabled');
+}
+
+function cancelOnlineLookup() {
+  document.getElementById('online-lookup-confirm-dialog').close();
+  const sw = document.getElementById('settings-online-switch');
+  if (sw) sw.selected = false;
+  showToast('Online lookup not enabled', 'error');
 }
 
 // ── PIN setup dialog (replaces blocking prompt() calls) ─────────────────────────
@@ -957,7 +1157,9 @@ function setupAutocomplete(inputId, listId, items) {
         input.value = li.textContent;
         list.hidden = true;
         input.dispatchEvent(new Event('change'));
-        if (inputId === 'field-name') autoFillGenericName(li.textContent);
+        if (inputId === 'field-name')       autoFillGenericName(li.textContent);
+        if (inputId === 'field-prescriber') crossFillFromPrescriber(li.textContent);
+        if (inputId === 'field-pharmacy')   crossFillFromPharmacy(li.textContent);
       });
     });
   });
@@ -971,20 +1173,46 @@ async function setupDynamicAutocomplete(inputId, listId, settingKey) {
   setupAutocomplete(inputId, listId, items);
 }
 
-function autoFillGenericName(brandName) {
-  const map = { 'Tylenol':'Acetaminophen','Advil':'Ibuprofen','Motrin':'Ibuprofen',
-    'Aleve':'Naproxen','Benadryl':'Diphenhydramine','Claritin':'Loratadine',
-    'Zyrtec':'Cetirizine','Prilosec':'Omeprazole','Nexium':'Esomeprazole',
-    'Pepcid':'Famotidine','MiraLax':'Polyethylene Glycol 3350','Dulcolax':'Bisacodyl' };
-  const generic = map[brandName];
-  if (generic) {
-    const el = document.getElementById('field-generic-name');
-    if (el && !el.value) el.value = generic;
+function autoFillGenericName(typedName) {
+  // The local dataset stores each entry under its generic name with brand
+  // names as aliases, so the "generic" for a matched brand is entry.name.
+  const entry = lookupByNameOrAlias(typedName);
+  if (!entry) return;
+  const generic = entry.genericName || entry.name;
+  if (!generic || generic.toLowerCase() === typedName.trim().toLowerCase()) return;
+  const el = document.getElementById('field-generic-name');
+  if (el && !el.value) {
+    el.value = generic;
+    markInferred('generic-name', 1, 'Generic name');
   }
 }
 
-async function saveAutocompleteHistory(prescriber, pharmacy) {
-  const save = async (key, value) => {
+// Cross-fills phone numbers for a prescriber/pharmacy picked from autocomplete,
+// using contact details remembered from past entries of the same name.
+async function crossFillFromPrescriber(name) {
+  const raw = await getSetting('ac-prescriber-details', '{}');
+  let map; try { map = JSON.parse(raw); } catch { map = {}; }
+  const detail = map[(name || '').toLowerCase()];
+  const phoneEl = document.getElementById('field-prescriber-phone');
+  if (detail?.phone && phoneEl && !phoneEl.value) {
+    phoneEl.value = detail.phone;
+    markInferred('prescriber-phone', 1, 'Physician phone');
+  }
+}
+
+async function crossFillFromPharmacy(name) {
+  const raw = await getSetting('ac-pharmacy-details', '{}');
+  let map; try { map = JSON.parse(raw); } catch { map = {}; }
+  const detail = map[(name || '').toLowerCase()];
+  const phoneEl = document.getElementById('field-pharmacy-phone');
+  if (detail?.phone && phoneEl && !phoneEl.value) {
+    phoneEl.value = detail.phone;
+    markInferred('pharmacy-phone', 1, 'Pharmacy phone');
+  }
+}
+
+async function saveAutocompleteHistory(prescriber, pharmacy, prescriberPhone, pharmacyPhone) {
+  const saveName = async (key, value) => {
     if (!value) return;
     const raw = await getSetting(key, '[]');
     let list;
@@ -992,8 +1220,18 @@ async function saveAutocompleteHistory(prescriber, pharmacy) {
     if (!list.includes(value)) { list.unshift(value); list = list.slice(0, 20); }
     await setSetting(key, JSON.stringify(list));
   };
-  await save('ac-prescribers', prescriber);
-  await save('ac-pharmacies', pharmacy);
+  const saveDetail = async (key, name, phone) => {
+    if (!name || !phone) return;
+    const raw = await getSetting(key, '{}');
+    let map;
+    try { map = JSON.parse(raw); } catch { map = {}; }
+    map[name.toLowerCase()] = { phone };
+    await setSetting(key, JSON.stringify(map));
+  };
+  await saveName('ac-prescribers', prescriber);
+  await saveName('ac-pharmacies', pharmacy);
+  await saveDetail('ac-prescriber-details', prescriber, prescriberPhone);
+  await saveDetail('ac-pharmacy-details', pharmacy, pharmacyPhone);
 }
 
 // ── Color picker ──────────────────────────────────────────────────────────────
@@ -1062,6 +1300,28 @@ function bindEvents() {
   document.getElementById('btn-med-save').addEventListener('click', saveMedHandler);
   document.getElementById('btn-med-cancel').addEventListener('click', () => document.getElementById('med-dialog').close());
 
+  // Quick add (natural-language autofill)
+  document.getElementById('field-quickadd')?.addEventListener('input', () => {
+    clearTimeout(_quickAddTimer);
+    _quickAddTimer = setTimeout(handleQuickAddParse, 500);
+  });
+  document.getElementById('field-quickadd')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      clearTimeout(_quickAddTimer);
+      handleQuickAddParse();
+    }
+  });
+
+  // Confirm-guesses dialog (save-time gate for unreviewed quick-add guesses)
+  document.getElementById('btn-confirm-guess-save')?.addEventListener('click', async () => {
+    if (_pendingSaveData) await performMedSave(_pendingSaveData);
+  });
+  document.getElementById('btn-confirm-guess-edit')?.addEventListener('click', () => {
+    document.getElementById('confirm-guess-dialog').close();
+    _pendingSaveData = null;
+  });
+
   // Auto-fill refill date
   ['field-fill-date','field-days-supply'].forEach(id => {
     document.getElementById(id)?.addEventListener('change', () => {
@@ -1108,6 +1368,10 @@ function bindEvents() {
   // Settings dialog
   document.getElementById('btn-settings-save').addEventListener('click', saveSettings);
   document.getElementById('btn-settings-close').addEventListener('click', () => document.getElementById('settings-dialog').close());
+
+  // Online-lookup disclosure dialog
+  document.getElementById('btn-online-lookup-confirm')?.addEventListener('click', confirmOnlineLookup);
+  document.getElementById('btn-online-lookup-cancel')?.addEventListener('click', cancelOnlineLookup);
 
   // PIN setup dialog
   document.getElementById('btn-pin-set-confirm').addEventListener('click', confirmPinSet);
